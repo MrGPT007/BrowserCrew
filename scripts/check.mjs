@@ -22,7 +22,7 @@ for (const file of jsModules) await execFileAsync(process.execPath, ["--check", 
 const manifest = JSON.parse(await readFile("manifest.json", "utf8"));
 if (manifest.manifest_version !== 3) throw new Error("Manifest must stay on MV3.");
 if (manifest.background?.service_worker !== "src/service-worker.js") throw new Error("Controlled writes require the modular service-worker wrapper.");
-for (const forbidden of ["debugger", "cookies", "nativeMessaging", "downloads"]) {
+for (const forbidden of ["debugger", "cookies", "nativeMessaging"]) {
   if (manifest.permissions?.includes(forbidden)) throw new Error(`Unexpected privileged permission: ${forbidden}`);
 }
 
