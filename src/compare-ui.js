@@ -21,9 +21,9 @@ function installCompareWorkspace() {
       anchor.insertAdjacentHTML("beforebegin", `
         <article class="card" id="compareJobCard" hidden>
           <div class="card-heading"><div><p class="step-label">2 · PAGES</p><h2>Choose the pages to compare</h2></div><span class="badge badge-safe">Read only</span></div>
-          <p class="helper">BrowserCrew can compare 2 to 5 normal website tabs from this window. Each page stays read only.</p>
+          <p class="helper">BrowserCrew can compare 2 to 5 normal website tabs from this window. Each selected page stays read only.</p>
           <button class="button tactile full" id="refreshCompareTabsButton" type="button">Refresh open pages</button>
-          <div class="history-list" id="compareTabList"><div class="empty">Open the supplier pages you want to compare, then refresh this list.</div></div>
+          <div class="provider-grid" id="compareTabList"><div class="empty">Open the supplier pages you want to compare, then refresh this list.</div></div>
           <label class="field-label" for="compareCriteriaInput">What should I compare?</label>
           <textarea id="compareCriteriaInput" rows="5" placeholder="Example:&#10;Price&#10;Minimum order&#10;Lead time&#10;Shipping"></textarea>
           <p class="helper">Put each item on its own line, or separate items with commas. BrowserCrew checks each returned value against the page text and marks missing information clearly.</p>
@@ -52,8 +52,17 @@ function installCompareWorkspace() {
 function bindCompareUi() {
   q('[data-job-mode="compare"]')?.addEventListener("click", renderCompareTabs);
   q("#refreshCompareTabsButton")?.addEventListener("click", renderCompareTabs);
+  q("#compareTabList")?.addEventListener("click", onCompareTabClick);
   q("#runCompareButton")?.addEventListener("click", runComparison);
   q("#stopCompareButton")?.addEventListener("click", stopComparison);
+}
+
+function onCompareTabClick(event) {
+  const button = event.target.closest("[data-compare-tab-id]");
+  if (!button) return;
+  const selected = !button.classList.contains("is-selected");
+  button.classList.toggle("is-selected", selected);
+  button.setAttribute("aria-pressed", String(selected));
 }
 
 async function renderCompareTabs() {
@@ -73,12 +82,12 @@ async function renderCompareTabs() {
   }
   list.innerHTML = compareState.tabs.map((tab) => {
     const host = safeHost(tab.url);
-    return `<label class="history-item"><input type="checkbox" data-compare-tab-id="${tab.id}" /><span><strong>${escapeText(tab.title)}</strong><p>${escapeText(host)}</p></span></label>`;
+    return `<button class="setting-choice tactile" type="button" data-compare-tab-id="${tab.id}" aria-pressed="false"><strong>${escapeText(tab.title)}</strong><span>${escapeText(host)}</span></button>`;
   }).join("");
 }
 
 async function runComparison() {
-  const selectedIds = qa("[data-compare-tab-id]:checked").map((input) => Number(input.dataset.compareTabId)).filter(Number.isFinite);
+  const selectedIds = qa("[data-compare-tab-id].is-selected").map((button) => Number(button.dataset.compareTabId)).filter(Number.isFinite);
   if (selectedIds.length < 2 || selectedIds.length > 5) {
     notify("Choose between 2 and 5 pages to compare.");
     return;
@@ -102,8 +111,9 @@ async function runComparison() {
   }
 
   const settings = collectSettings();
-  if (!(await requestOrigins([originPattern(settings.baseUrl)].filter(Boolean)))) {
-    notify("This comparison needs access to your selected AI service. Test the AI connection and approve Chrome's permission prompt.");
+  const providerPattern = originPattern(settings.baseUrl);
+  if (!providerPattern || !(await requestOrigins([providerPattern]))) {
+    notify("This comparison needs access to your selected AI service. Open Connect AI, test it, and approve Chrome's permission prompt.");
     return;
   }
 
