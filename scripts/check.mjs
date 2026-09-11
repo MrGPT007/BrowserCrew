@@ -6,7 +6,7 @@ const execFileAsync = promisify(execFile);
 const supplierFixtures = ["a", "b", "c", "d", "e"].map((name) => `tests/fixtures/supplier-${name}.html`);
 const jsModules = [
   "src/background.js", "src/sidepanel.js", "src/service-worker.js",
-  "src/form-write.js", "src/form-ui.js", "src/compare-read.js", "src/compare-ui.js",
+  "src/form-write.js", "src/form-ui.js", "src/workspace-ui-core.js", "src/compare-read.js", "src/compare-ui.js",
   "scripts/browser-smoke.mjs"
 ];
 const required = [
@@ -70,8 +70,13 @@ if (html.includes('data-view="agents"')) throw new Error("Do not expose an Agent
 const panel = await readFile("src/sidepanel.js", "utf8");
 if (!panel.includes("renderTools") || !panel.includes("renderSkills") || !panel.includes("renderMemory")) throw new Error("Workbench views must be wired to real data.");
 
-const formUi = await readFile("src/form-ui.js", "utf8");
-if (!formUi.includes('import "./compare-ui.js"') || !formUi.includes('mode === "compare"')) throw new Error("Workspace job-mode controller must include comparison mode.");
+const formUiLoader = await readFile("src/form-ui.js", "utf8");
+if (!formUiLoader.includes('import "./directory-ui.js"') || !formUiLoader.includes('import "./workspace-ui-core.js"')) {
+  throw new Error("Workspace UI loader must compose the W2 directory UI with the existing workspace controller.");
+}
+
+const workspaceUi = await readFile("src/workspace-ui-core.js", "utf8");
+if (!workspaceUi.includes('import "./compare-ui.js"') || !workspaceUi.includes('mode === "compare"')) throw new Error("Workspace job-mode controller must include comparison mode.");
 
 const compareUi = await readFile("src/compare-ui.js", "utf8");
 for (const compareUiContract of ['data-job-mode="compare"', "Choose the pages to compare", "Compare selected pages", "compare-table", "Stop comparison"]) {
