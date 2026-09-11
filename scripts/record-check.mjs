@@ -46,8 +46,8 @@ for (const contract of [
   "Update a record",
   "Preview record update",
   "Approve and save this record",
-  "press Save once",
-  "will not automatically press Save again"
+  "press <strong>Save once</strong>",
+  "will <strong>not</strong> automatically press Save again"
 ]) {
   if (!ui.includes(contract)) throw new Error(`Missing W4 record UI contract: ${contract}`);
 }
