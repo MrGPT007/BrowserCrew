@@ -1,0 +1,77 @@
+/* BrowserCrew consumes the NeoBrutal Soft v0.7 design language.
+   Reference: NeoBrutalism-shop/NeoBrutal-Soft @ dfed77bd159ac5c38081f7a4ca5c2229b61ffb8a
+   Family law: compress, never float. */
+:root {
+  --nbs-space-1: clamp(.25rem,.22rem + .12vw,.375rem);
+  --nbs-space-2: clamp(.5rem,.44rem + .18vw,.6875rem);
+  --nbs-space-3: clamp(.75rem,.66rem + .28vw,1rem);
+  --nbs-space-4: clamp(1rem,.86rem + .42vw,1.375rem);
+  --nbs-space-5: clamp(1.25rem,1.04rem + .62vw,1.75rem);
+  --nbs-space-6: clamp(1.5rem,1.18rem + .9vw,2.25rem);
+  --nbs-text-xs: clamp(.72rem,.69rem + .08vw,.78rem);
+  --nbs-text-sm: clamp(.82rem,.78rem + .12vw,.9rem);
+  --nbs-text-md: clamp(.95rem,.9rem + .15vw,1.05rem);
+  --nbs-text-lg: clamp(1.08rem,.98rem + .3vw,1.28rem);
+  --nbs-text-xl: clamp(1.3rem,1.12rem + .52vw,1.65rem);
+  --nbs-text-2xl: clamp(1.65rem,1.32rem + .95vw,2.25rem);
+  --nbs-font-sans: Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --nbs-font-mono: "SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  --nbs-border-width: 2px;
+  --nbs-border-width-strong: 3px;
+  --nbs-radius-sm: 8px;
+  --nbs-radius-md: 12px;
+  --nbs-radius-lg: 16px;
+  --nbs-radius-pill: 999px;
+  --nbs-depth-rest-x: 3px;
+  --nbs-depth-rest-y: 3px;
+  --nbs-depth-hover-x: 1.5px;
+  --nbs-depth-hover-y: 1.5px;
+  --nbs-motion-fast: 105ms;
+  --nbs-motion-standard: 165ms;
+  --nbs-ease-press: cubic-bezier(.2,0,0,1);
+  --nbs-ease-release: cubic-bezier(.2,.85,.25,1.04);
+  --nbs-paper: #f6f2ea;
+  --nbs-white: #fffdf8;
+  --nbs-ink: #171717;
+  --nbs-blue: #86b6ff;
+  --nbs-blue-strong: #4788df;
+  --nbs-mint: #9be3bd;
+  --nbs-lilac: #c9b7ff;
+  --nbs-peach: #ffb8a3;
+  --nbs-yellow: #f4dc78;
+  --nbs-red: #ff8f8f;
+  --nbs-bg: var(--nbs-paper);
+  --nbs-surface: var(--nbs-white);
+  --nbs-surface-muted: #eee9df;
+  --nbs-text: var(--nbs-ink);
+  --nbs-text-muted: #5f5b55;
+  --nbs-border: var(--nbs-ink);
+  --nbs-shadow: #171717;
+  --nbs-primary: var(--nbs-blue);
+  --nbs-primary-strong: var(--nbs-blue-strong);
+  --nbs-success: var(--nbs-mint);
+  --nbs-warning: var(--nbs-yellow);
+  --nbs-danger: var(--nbs-red);
+  --nbs-info: var(--nbs-lilac);
+  --nbs-focus: #2f6fca;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --nbs-bg:#171717; --nbs-surface:#242321; --nbs-surface-muted:#2f2d2a;
+  --nbs-text:#f7f2e8; --nbs-text-muted:#c1bbb1; --nbs-border:#f1ebdf;
+  --nbs-shadow:#050505; --nbs-primary:#8db9ff; --nbs-primary-strong:#a9cbff;
+  --nbs-success:#87d9ae; --nbs-warning:#e8cf68; --nbs-danger:#f08a8a;
+  --nbs-info:#bda9fb; --nbs-focus:#b9d4ff; color-scheme:dark;
+}
+* { box-sizing: border-box; }
+html { font-family: var(--nbs-font-sans); background: var(--nbs-bg); color: var(--nbs-text); }
+body { margin:0; min-width: 300px; background:var(--nbs-bg); color:var(--nbs-text); }
+button,input,textarea,select { font: inherit; }
+button { color: inherit; }
+::selection { background: var(--nbs-primary); color:#111; }
+:focus-visible { outline: 3px solid var(--nbs-focus); outline-offset: 3px; }
+.tactile { box-shadow: var(--nbs-depth-rest-x) var(--nbs-depth-rest-y) 0 var(--nbs-shadow); transition: transform var(--nbs-motion-fast) var(--nbs-ease-press), box-shadow var(--nbs-motion-fast) var(--nbs-ease-press), background-color var(--nbs-motion-fast) linear; }
+@media (hover:hover) and (pointer:fine) { .tactile:hover { transform:translate(1.5px,1.5px); box-shadow:var(--nbs-depth-hover-x) var(--nbs-depth-hover-y) 0 var(--nbs-shadow); } }
+.tactile:active { transform:translate(3px,3px); box-shadow:none; }
+.tactile:disabled { cursor:not-allowed; opacity:.55; transform:none; box-shadow:1px 1px 0 var(--nbs-shadow); }
+@media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition-duration:.01ms!important; animation-duration:.01ms!important; animation-iteration-count:1!important; } }
