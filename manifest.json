@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "BrowserCrew",
+  "version": "0.1.0",
+  "description": "Give your browser a job. Choose your AI. Stay in control.",
+  "permissions": ["sidePanel", "storage", "activeTab", "scripting", "tabs"],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open BrowserCrew"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
