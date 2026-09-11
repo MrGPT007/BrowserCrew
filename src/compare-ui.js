@@ -11,6 +11,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function installCompareWorkspace() {
   const install = () => {
+    const singlePageCard = q("#selectTabButton")?.closest(".card");
+    if (singlePageCard) singlePageCard.id = "singlePageCard";
+
     const modeGrid = q(".mode-choice-grid");
     if (modeGrid && !q('[data-job-mode="compare"]')) {
       modeGrid.insertAdjacentHTML("beforeend", '<button class="mode-choice tactile" type="button" data-job-mode="compare" role="radio" aria-checked="false"><strong>Compare pages</strong><span>Choose 2–5 open pages and compare the same facts across all of them.</span></button>');
