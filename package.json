@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node scripts/check.mjs && node scripts/directory-check.mjs && node scripts/record-check.mjs",
+    "check": "node scripts/check.mjs && node scripts/directory-check.mjs && node scripts/record-check.mjs && node scripts/invoice-check.mjs",
     "browser-smoke": "node scripts/browser-smoke.mjs",
     "directory-smoke": "node scripts/directory-smoke.mjs",
-    "record-smoke": "node scripts/record-smoke.mjs"
+    "record-smoke": "node scripts/record-smoke.mjs",
+    "invoice-smoke": "node scripts/invoice-smoke.mjs"
   },
   "devDependencies": {
     "playwright": "1.63.0"
