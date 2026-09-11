@@ -61,7 +61,16 @@
         <div class="selection-summary" id="selectedTabSummary" hidden></div>
       </article>
 
-      <article class="card">
+      <article class="card mode-card">
+        <div class="card-heading"><div><p class="step-label">JOB TYPE</p><h2>Choose what BrowserCrew should do</h2></div></div>
+        <p class="helper">Reading leaves the page unchanged. Preparing a form can fill approved fields, but BrowserCrew will show every change before it writes anything.</p>
+        <div class="mode-choice-grid" role="radiogroup" aria-label="Job type">
+          <button class="mode-choice tactile is-selected" type="button" data-job-mode="read" role="radio" aria-checked="true"><strong>Read information</strong><span>Find facts on the page. Nothing is changed.</span></button>
+          <button class="mode-choice tactile" type="button" data-job-mode="form" role="radio" aria-checked="false"><strong>Prepare a form</strong><span>Preview exact field changes, then approve before BrowserCrew fills them.</span></button>
+        </div>
+      </article>
+
+      <article class="card" id="readJobCard">
         <div class="card-heading"><div><p class="step-label">2 · JOB</p><h2>Tell BrowserCrew what to do</h2></div><span class="badge badge-safe">Read only</span></div>
         <label class="field-label" for="goalInput">What should I find on this page?</label>
         <textarea id="goalInput" rows="4" placeholder="Example: Find the product name and price on this page.">Find the product name and price on this page.</textarea>
@@ -74,7 +83,30 @@
         <button class="text-button workspace-skill-link" type="button" data-go-view="skills">Save or reuse these instructions</button>
       </article>
 
-      <article class="card start-card">
+      <article class="card" id="formJobCard" hidden>
+        <div class="card-heading"><div><p class="step-label">2 · FORM DETAILS</p><h2>Tell BrowserCrew what to put in the form</h2></div><span class="badge badge-warning">Approval required</span></div>
+        <label class="field-label" for="formDetailsInput">What information should I enter?</label>
+        <textarea id="formDetailsInput" rows="6" placeholder="Example:&#10;Name: Priya Sharma&#10;Email: priya@example.com&#10;Message: Please send your wholesale pricing."></textarea>
+        <p class="helper">Include only the details you want placed into this form. BrowserCrew will inspect the form, match your details to supported fields, and show a preview first.</p>
+        <div class="example-box">✋ Nothing is changed when you preview. BrowserCrew does not submit the form in this workflow.</div>
+        <button class="button button-primary tactile full" id="previewFormButton" type="button">Preview form changes</button>
+      </article>
+
+      <article class="card form-preview-card" id="formPreviewCard" hidden aria-live="polite">
+        <div class="card-heading"><div><p class="step-label">3 · APPROVAL</p><h2>Review every field before I fill it</h2></div><span class="badge badge-warning">Waiting for you</span></div>
+        <p class="helper">Only the fields listed below will change. If the page or any field changes before approval, BrowserCrew refuses the write and asks for a fresh preview.</p>
+        <div class="form-change-list" id="formChangeList"></div>
+        <div class="warning-box">⚠️ Approving fills these fields on the selected page. It does <strong>not</strong> press the submit, send, buy, save, or delete button.</div>
+        <div class="button-row"><button class="button tactile" id="cancelFormPreviewButton" type="button">Cancel preview</button><button class="button button-primary tactile" id="approveFormButton" type="button">Approve and fill these fields</button></div>
+      </article>
+
+      <article class="card result-card" id="formResultCard" hidden aria-live="polite">
+        <div class="card-heading"><div><p class="step-label">FORM RESULT</p><h2>Approved fields were filled</h2></div><span class="badge badge-safe">Checked</span></div>
+        <dl class="result-grid" id="formResultGrid"></dl>
+        <div class="evidence-box" id="formEvidenceBox"></div>
+      </article>
+
+      <article class="card start-card" id="readStartCard">
         <div class="card-heading"><div><p class="step-label">3 · REVIEW</p><h2>Check and start</h2></div></div>
         <div class="readiness-list">
           <div><span class="mini-icon" aria-hidden="true">◎</span><p><strong>Page access</strong><span>Choose the exact page above. Chrome asks before BrowserCrew can read a new site.</span></p></div>
@@ -153,6 +185,10 @@
       <article class="card card-accent">
         <div class="card-heading"><div><p class="step-label">AVAILABLE NOW</p><h2>Built-in browser tools</h2></div><span class="badge badge-safe">Read only</span></div>
         <div class="tool-list" id="toolList"></div>
+        <div class="tool-list controlled-tool-list" aria-label="Approval-based form tools">
+          <article class="tool-card"><div class="tool-card-main"><span class="tool-icon" aria-hidden="true">✓</span><div><strong>Inspect editable form fields</strong><p>Reads supported field labels and types so BrowserCrew can prepare an exact preview.</p></div></div><div class="tool-meta"><span>Read form structure</span><code>page.form.inspect</code></div></article>
+          <article class="tool-card"><div class="tool-card-main"><span class="tool-icon tool-icon-warning" aria-hidden="true">!</span><div><strong>Fill approved form fields</strong><p>Fills only fields shown in the approval preview. This tool never submits the form.</p></div></div><div class="tool-meta"><span>Approval required</span><code>page.form.fill</code></div></article>
+        </div>
       </article>
       <article class="card">
         <div class="card-heading"><div><p class="step-label">EXTERNAL TOOLS</p><h2>Tool-server connections are not active yet</h2></div><span class="badge">Later</span></div>
@@ -262,5 +298,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   </main>
   <script type="module" src="src/sidepanel.js"></script>
+  <script type="module" src="src/form-ui.js"></script>
 </body>
 </html>
