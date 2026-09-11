@@ -1,16 +1,22 @@
 import { readFile, access } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
+const execFileAsync = promisify(execFile);
 const supplierFixtures = ["a", "b", "c", "d", "e"].map((name) => `tests/fixtures/supplier-${name}.html`);
+const jsModules = [
+  "src/background.js", "src/sidepanel.js", "src/service-worker.js",
+  "src/form-write.js", "src/form-ui.js", "src/compare-read.js", "src/compare-ui.js"
+];
 const required = [
-  "manifest.json", "sidepanel.html", "src/background.js", "src/sidepanel.js",
-  "src/service-worker.js", "src/form-write.js", "src/form-ui.js",
-  "src/compare-read.js", "src/compare-ui.js",
+  "manifest.json", "sidepanel.html", ...jsModules,
   "src/styles/neobrutal-soft.css", "src/styles/app.css", "docs/PRD.md",
   "docs/ARCHITECTURE.md", "docs/PERMISSIONS.md", "docs/FEASIBILITY.md", "AGENTS.md",
   "tests/fixtures/form.html", ...supplierFixtures
 ];
 
 for (const file of required) await access(file);
+for (const file of jsModules) await execFileAsync(process.execPath, ["--check", file]);
 
 const manifest = JSON.parse(await readFile("manifest.json", "utf8"));
 if (manifest.manifest_version !== 3) throw new Error("Manifest must stay on MV3.");
