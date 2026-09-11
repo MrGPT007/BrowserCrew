@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Supplier record SUP-1042</title>
+  <style>
+    body{font:16px/1.5 system-ui,sans-serif;max-width:44rem;margin:3rem auto;padding:0 1rem}form{display:grid;gap:1rem}label{display:grid;gap:.3rem;font-weight:700}input,textarea,select,button{font:inherit;padding:.7rem}textarea{min-height:7rem}output{display:block;margin-top:1rem;padding:.8rem;border:2px solid #222}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Supplier record</h1>
+    <p><strong>Record ID:</strong> SUP-1042</p>
+    <p>This controlled fixture proves a reviewed BrowserCrew record update. Saving changes is allowed only after the explicit BrowserCrew approval step.</p>
+
+    <form id="recordForm" data-browsercrew-record-id="SUP-1042">
+      <label for="status">Status
+        <select id="status" name="status">
+          <option value="Active" selected>Active</option>
+          <option value="Paused">Paused</option>
+          <option value="Archived">Archived</option>
+        </select>
+      </label>
+
+      <label for="owner">Owner
+        <input id="owner" name="owner" value="Maya Chen">
+      </label>
+
+      <label for="notes">Notes
+        <textarea id="notes" name="notes">Preferred lighting supplier.</textarea>
+      </label>
+
+      <button type="submit" data-browsercrew-record-save>Save changes</button>
+    </form>
+
+    <output id="saveReceipt" data-browsercrew-record-receipt data-save-count="0" aria-live="polite">No saved changes yet</output>
+  </main>
+
+  <script>
+    window.__browserCrewRecord = {
+      saves: 0,
+      inputEvents: 0,
+      changeEvents: 0,
+      lastSaved: null
+    };
+
+    document.addEventListener('input', () => { window.__browserCrewRecord.inputEvents += 1; });
+    document.addEventListener('change', () => { window.__browserCrewRecord.changeEvents += 1; });
+
+    document.querySelector('#recordForm').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const state = window.__browserCrewRecord;
+      state.saves += 1;
+      state.lastSaved = {
+        recordId: 'SUP-1042',
+        status: document.querySelector('#status').value,
+        owner: document.querySelector('#owner').value,
+        notes: document.querySelector('#notes').value
+      };
+      const receipt = document.querySelector('#saveReceipt');
+      receipt.dataset.saveCount = String(state.saves);
+      receipt.textContent = `Saved SUP-1042 successfully · save ${state.saves}`;
+    });
+  </script>
+</body>
+</html>
