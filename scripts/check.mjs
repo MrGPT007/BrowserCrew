@@ -6,10 +6,11 @@ const execFileAsync = promisify(execFile);
 const supplierFixtures = ["a", "b", "c", "d", "e"].map((name) => `tests/fixtures/supplier-${name}.html`);
 const jsModules = [
   "src/background.js", "src/sidepanel.js", "src/service-worker.js",
-  "src/form-write.js", "src/form-ui.js", "src/compare-read.js", "src/compare-ui.js"
+  "src/form-write.js", "src/form-ui.js", "src/compare-read.js", "src/compare-ui.js",
+  "scripts/browser-smoke.mjs"
 ];
 const required = [
-  "manifest.json", "sidepanel.html", ...jsModules,
+  "manifest.json", "sidepanel.html", "package.json", ".github/workflows/quality.yml", ...jsModules,
   "src/styles/neobrutal-soft.css", "src/styles/app.css", "docs/PRD.md",
   "docs/ARCHITECTURE.md", "docs/PERMISSIONS.md", "docs/FEASIBILITY.md", "AGENTS.md",
   "tests/fixtures/form.html", ...supplierFixtures
@@ -84,6 +85,20 @@ const supplierPages = await Promise.all(supplierFixtures.map((file) => readFile(
 if (supplierPages.length !== 5) throw new Error("W1 requires five controlled supplier fixtures.");
 if (!supplierPages.some((page) => !page.includes("<dt>Shipping</dt>"))) throw new Error("Supplier fixtures must include at least one intentionally missing criterion.");
 if (!supplierPages.some((page) => !page.includes("<dt>Lead time</dt>"))) throw new Error("Supplier fixtures must exercise missing-value reporting.");
+
+const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+if (packageJson.scripts?.["browser-smoke"] !== "node scripts/browser-smoke.mjs") throw new Error("Browser smoke script must stay wired in package.json.");
+if (packageJson.devDependencies?.playwright !== "1.63.0") throw new Error("Playwright must stay exactly pinned for reproducible extension smoke coverage.");
+
+const browserSmoke = await readFile("scripts/browser-smoke.mjs", "utf8");
+for (const smokeContract of ["launchPersistentContext", "W1 compared five controlled supplier pages", "W3 previewed and filled approved fields", "Target.closeTarget", "Recovery must inspect the uncertain write instead of replaying it", "submits, 0"]) {
+  if (!browserSmoke.includes(smokeContract)) throw new Error(`Missing browser-smoke proof: ${smokeContract}`);
+}
+
+const workflow = await readFile(".github/workflows/quality.yml", "utf8");
+for (const workflowContract of ["browser-smoke:", "playwright install --with-deps chromium", "npm run browser-smoke", "browser-smoke-evidence"]) {
+  if (!workflow.includes(workflowContract)) throw new Error(`Quality workflow is missing browser coverage: ${workflowContract}`);
+}
 
 const soft = await readFile("src/styles/neobrutal-soft.css", "utf8");
 if (/translate(?:Y)?\(\s*-/i.test(soft)) throw new Error("NeoBrutal Soft violation: interactive surfaces must compress, never float upward.");
