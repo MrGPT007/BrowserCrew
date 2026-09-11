@@ -6,7 +6,7 @@ const presets = {
 
 const VIEW_KEY = "browsercrew.activeView";
 const THEME_KEY = "browsercrew.theme";
-const validViews = new Set(["workspace", "ai", "history", "settings"]);
+const validViews = new Set(["workspace", "ai", "tools", "skills", "memory", "history", "settings"]);
 const state = { selectedTab: null, providerKind: "openai", currentTaskId: null, lastConnectionOk: false, hasSecret: false };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -19,7 +19,7 @@ async function init() {
   showView(localStorage.getItem(VIEW_KEY) || "workspace", false);
   const response = await send({ type: "GET_SETTINGS" });
   if (response.ok) applySettings(response.settings, response.hasSecret);
-  await renderHistory();
+  await Promise.all([renderHistory(), renderTools(), renderSkills(), renderMemory()]);
 }
 
 function bindEvents() {
@@ -29,14 +29,20 @@ function bindEvents() {
   });
   $$("[data-go-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.goView)));
   $$(".chip").forEach((button) => button.addEventListener("click", () => { $("#goalInput").value = button.dataset.example; }));
+  $$("[data-use-goal]").forEach((button) => button.addEventListener("click", () => useSkillGoal(button.dataset.useGoal, button.dataset.useName)));
   $$(".provider-card").forEach((button) => button.addEventListener("click", () => chooseProvider(button.dataset.provider, true)));
   $$("[data-theme-choice]").forEach((button) => button.addEventListener("click", () => setThemePreference(button.dataset.themeChoice)));
+  $$("[data-clear-memory]").forEach((button) => button.addEventListener("click", () => clearMemory(button.dataset.clearMemory)));
   $("#selectTabButton").addEventListener("click", selectCurrentTab);
   $("#testConnectionButton").addEventListener("click", testConnection);
   $("#runButton").addEventListener("click", runJob);
   $("#pauseButton").addEventListener("click", () => controlJob("PAUSE_TASK"));
   $("#stopButton").addEventListener("click", () => controlJob("STOP_TASK"));
   $("#refreshHistoryButton").addEventListener("click", renderHistory);
+  $("#refreshMemoryButton").addEventListener("click", renderMemory);
+  $("#copyWorkspaceToSkillButton").addEventListener("click", copyWorkspaceToSkill);
+  $("#saveSkillButton").addEventListener("click", saveSkill);
+  $("#savedSkillList").addEventListener("click", onSavedSkillClick);
   $("#themeButton").addEventListener("click", toggleTheme);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if ((localStorage.getItem(THEME_KEY) || "system") === "system") applyThemePreference("system");
@@ -58,7 +64,12 @@ function showView(name, save = true) {
   });
   if (save) localStorage.setItem(VIEW_KEY, viewName);
   if (viewName === "history") renderHistory();
+  if (viewName === "tools") renderTools();
+  if (viewName === "skills") renderSkills();
+  if (viewName === "memory") renderMemory();
   if (viewName === "settings") syncThemeChoices();
+  const activeTab = $(`.function-tab[data-view="${viewName}"]`);
+  activeTab?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 function onTabKeydown(event) {
@@ -115,6 +126,7 @@ async function testConnection() {
     box.textContent = `Could not connect: ${response.error.message}`;
     setAiStatus("error", "Connection failed");
   }
+  await renderMemory();
 }
 
 async function runJob() {
@@ -143,11 +155,11 @@ async function runJob() {
     showRunState(response.task?.status || "failed");
     toast(response.error?.message || "The job could not finish.");
   }
-  await renderHistory();
+  await Promise.all([renderHistory(), renderMemory()]);
 }
 
 function setProgress(index) {
-  const steps = ["Check permission for the selected page", "Read a bounded text snapshot", "Ask your selected AI to extract the facts", "Verify the answer and save evidence"];
+  const steps = ["Check permission for the selected page", "Read a bounded text snapshot", "Ask your selected AI to extract the facts", "Check the answer and save evidence"];
   $("#progressList").innerHTML = steps.map((step, i) => `<li class="${i < index ? "is-done" : i === index ? "is-active" : ""}">${escapeHtml(step)}</li>`).join("");
 }
 
@@ -165,7 +177,11 @@ function renderResult(task) {
   const result = task.result;
   if (!result) return;
   $("#resultCard").hidden = false;
-  const rows = [["Product", result.values.productName || "Not found"],["Price", result.values.price || "Not found"],["Notes", result.values.notes || "None"]];
+  const items = Array.isArray(result.values?.items) && result.values.items.length
+    ? result.values.items
+    : [["Product", result.values?.productName], ["Price", result.values?.price]].map(([label, value]) => ({ label, value }));
+  const rows = items.filter((item) => item.value).map((item) => [item.label, item.value]);
+  if (result.values?.notes) rows.push(["Notes", result.values.notes]);
   $("#resultGrid").innerHTML = rows.map(([label,value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join("");
   const verification = result.evidence.verification.map((line) => `<li>${escapeHtml(line)}</li>`).join("");
   $("#evidenceBox").innerHTML = `<strong>Evidence</strong><p>Read from <a href="${escapeAttr(result.evidence.sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(result.evidence.pageTitle)}</a>.</p><ul>${verification}</ul>`;
@@ -182,6 +198,107 @@ async function renderHistory() {
   const list = $("#historyList");
   if (!response.ok || !response.tasks.length) { list.innerHTML = `<div class="empty">No saved jobs yet. Your first completed or interrupted job will appear here.</div>`; return; }
   list.innerHTML = response.tasks.slice(0,30).map((task) => `<article class="history-item"><strong>${escapeHtml(task.goal)}</strong><p>Status: ${escapeHtml(prettyStatus(task.status))}</p><p>${escapeHtml(task.selectedResource?.title || task.selectedResource?.url || "Unknown page")}</p><time datetime="${escapeAttr(task.updatedAt)}">${escapeHtml(new Date(task.updatedAt).toLocaleString())}</time></article>`).join("");
+}
+
+async function renderTools() {
+  const response = await send({ type: "GET_TOOL_CATALOG" });
+  const list = $("#toolList");
+  if (!response.ok) { list.innerHTML = `<div class="empty">BrowserCrew could not load the built-in tool list.</div>`; return; }
+  list.innerHTML = response.tools.map((tool) => `<article class="tool-card"><div class="tool-card-main"><span class="tool-icon" aria-hidden="true">✓</span><div><strong>${escapeHtml(tool.name)}</strong><p>${escapeHtml(tool.summary)}</p></div></div><div class="tool-meta"><span>${escapeHtml(tool.access)}</span><code>${escapeHtml(tool.id)}</code></div></article>`).join("");
+}
+
+function copyWorkspaceToSkill() {
+  $("#skillGoalInput").value = $("#goalInput").value.trim();
+  if (!$("#skillNameInput").value.trim()) $("#skillNameInput").focus();
+  toast("Workspace instructions copied. Give the reusable job a name, then save it.");
+}
+
+async function saveSkill() {
+  const name = $("#skillNameInput").value.trim();
+  const goal = $("#skillGoalInput").value.trim();
+  setBusy($("#saveSkillButton"), true, "Saving…");
+  const response = await send({ type: "SAVE_SKILL", skill: { name, goal } });
+  setBusy($("#saveSkillButton"), false, "Save reusable job");
+  if (!response.ok) { toast(response.error?.message || "The reusable job could not be saved."); return; }
+  $("#skillNameInput").value = "";
+  $("#skillGoalInput").value = "";
+  toast("Reusable job saved on this device.");
+  await Promise.all([renderSkills(), renderMemory()]);
+}
+
+async function renderSkills() {
+  const response = await send({ type: "GET_SKILLS" });
+  const list = $("#savedSkillList");
+  if (!response.ok || !response.skills.length) {
+    list.innerHTML = `<div class="empty">No saved reusable jobs yet. Save the instructions you use often and they will appear here.</div>`;
+    $("#skillCountBadge").textContent = "0 saved";
+    return;
+  }
+  $("#skillCountBadge").textContent = `${response.skills.length} saved`;
+  list.innerHTML = response.skills.map((skill) => `<article class="skill-card"><div><strong>${escapeHtml(skill.name)}</strong><p>${escapeHtml(skill.goal)}</p><small>Read only · saved ${escapeHtml(new Date(skill.createdAt).toLocaleDateString())}</small></div><div class="skill-actions"><button class="button button-small tactile" type="button" data-use-saved-skill="${escapeAttr(skill.id)}">Use</button><button class="button button-small button-danger tactile" type="button" data-delete-skill="${escapeAttr(skill.id)}">Delete</button></div></article>`).join("");
+  list.dataset.skills = JSON.stringify(response.skills.map(({ id, name, goal }) => ({ id, name, goal })));
+}
+
+function onSavedSkillClick(event) {
+  const useButton = event.target.closest("[data-use-saved-skill]");
+  const deleteButton = event.target.closest("[data-delete-skill]");
+  if (useButton) {
+    const skills = JSON.parse($("#savedSkillList").dataset.skills || "[]");
+    const skill = skills.find((item) => item.id === useButton.dataset.useSavedSkill);
+    if (skill) useSkillGoal(skill.goal, skill.name);
+  }
+  if (deleteButton) deleteSkill(deleteButton.dataset.deleteSkill);
+}
+
+function useSkillGoal(goal, name) {
+  $("#goalInput").value = goal;
+  showView("workspace");
+  toast(`${name || "Reusable job"} is ready in Workspace.`);
+}
+
+async function deleteSkill(skillId) {
+  if (!confirm("Delete this reusable job from this device? This cannot be undone.")) return;
+  const response = await send({ type: "DELETE_SKILL", skillId });
+  if (!response.ok) { toast(response.error?.message || "The reusable job could not be deleted."); return; }
+  toast("Reusable job deleted.");
+  await Promise.all([renderSkills(), renderMemory()]);
+}
+
+async function renderMemory() {
+  const response = await send({ type: "GET_MEMORY_SUMMARY" });
+  const target = $("#memorySummary");
+  if (!response.ok) { target.innerHTML = `<div class="empty">BrowserCrew could not load the saved-data summary.</div>`; return; }
+  const summary = response.summary;
+  const providerName = providerLabel(summary.provider?.kind);
+  const secretText = summary.hasSecret ? "Secret key kept for this Chrome session" : "No session secret stored";
+  target.innerHTML = `
+    <div class="memory-stat"><strong>${summary.taskCount}</strong><span>saved jobs</span></div>
+    <div class="memory-stat"><strong>${summary.skillCount}</strong><span>reusable jobs</span></div>
+    <div class="memory-stat memory-stat-wide"><strong>${escapeHtml(providerName)}</strong><span>${escapeHtml(summary.provider?.model || "No model selected")} · ${escapeHtml(secretText)}</span></div>`;
+}
+
+async function clearMemory(scope) {
+  const messages = {
+    tasks: "Delete all BrowserCrew job history from this Chrome profile? This cannot be undone.",
+    skills: "Delete all saved reusable jobs from this Chrome profile? This cannot be undone.",
+    ai: "Forget the saved AI service, model, and current-session secret key? You will need to set up the AI connection again."
+  };
+  if (!confirm(messages[scope] || "Delete this saved information?")) return;
+  const response = await send({ type: "CLEAR_MEMORY", scope });
+  if (!response.ok) { toast(response.error?.message || "BrowserCrew could not delete that saved information."); return; }
+  if (scope === "tasks") await renderHistory();
+  if (scope === "skills") await renderSkills();
+  if (scope === "ai") {
+    state.hasSecret = false;
+    state.lastConnectionOk = false;
+    setAiStatus("idle", "Not tested");
+    const settingsResponse = await send({ type: "GET_SETTINGS" });
+    if (settingsResponse.ok) applySettings(settingsResponse.settings, false);
+    $("#apiKeyInput").value = "";
+    $("#apiKeyInput").placeholder = "Paste your API key";
+  }
+  await renderMemory();
+  toast("Selected BrowserCrew memory was deleted.");
 }
 
 async function requestOriginPermission(urlText) {
@@ -213,7 +330,8 @@ function applySettings(settings, hasSecret) {
   chooseProvider(settings.kind || "openai", false);
   $("#modelInput").value = settings.model || presets[state.providerKind].model;
   $("#serverInput").value = settings.baseUrl || presets[state.providerKind].baseUrl;
-  if (hasSecret) $("#apiKeyInput").placeholder = "Saved for this Chrome session";
+  $("#apiKeyInput").value = "";
+  $("#apiKeyInput").placeholder = hasSecret ? "Saved for this Chrome session" : "Paste your API key";
 }
 
 function collectSettings() { return { kind: state.providerKind, model: $("#modelInput").value.trim(), baseUrl: $("#serverInput").value.trim() }; }
@@ -222,6 +340,7 @@ function secretForRequest() {
   const typed = $("#apiKeyInput").value;
   return typed.length ? typed : undefined;
 }
+function providerLabel(kind) { return ({ openai: "OpenAI", lmstudio: "LM Studio", ollama: "Ollama" })[kind] || "Not selected"; }
 function setAiStatus(stateName,label) { const el=$("#aiStatus"); el.dataset.state=stateName; el.querySelector(".status-label").textContent=label; }
 function setPageStatus(stateName,label) { const el=$("#pageStatus"); el.dataset.state=stateName; el.querySelector(".status-label").textContent=label; }
 function setBusy(button,busy,label) { button.disabled=busy; button.textContent=label; }
