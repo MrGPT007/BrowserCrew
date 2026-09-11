@@ -73,7 +73,9 @@ try {
     assert.equal(entry.verified, true, `${entry.invoiceId} was not verified.`);
     assert.equal(entry.state, "complete", `${entry.invoiceId} did not reach Chrome complete state.`);
     assert.ok(entry.bytesReceived > 0, `${entry.invoiceId} did not record received bytes.`);
-    assert.ok(entry.filename?.includes("BrowserCrew/Invoices") || entry.filename?.includes("BrowserCrew\\Invoices"), `${entry.invoiceId} was not stored under the BrowserCrew invoice folder.`);
+    assert.ok(entry.filename, `${entry.invoiceId} did not preserve Chrome's resolved filename.`);
+    const intent = normalTask.journal?.find((item) => item.type === "invoice_download.intent" && item.data?.invoiceId === entry.invoiceId);
+    assert.equal(intent?.data?.filename, `BrowserCrew/Invoices/${entry.invoiceId}.pdf`, `${entry.invoiceId} did not preserve BrowserCrew's requested filename in the durable journal.`);
     assert.ok(entry.finalUrl === entry.downloadUrl, `${entry.invoiceId} final URL does not match its selected source URL.`);
     assert.match(entry.verificationMethod || "", /Chrome download complete/);
   }
