@@ -42,6 +42,7 @@ try {
 
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await panel.getByRole("tab", { name: "Connect AI" }).click();
   await panel.locator("#modelInput").waitFor({ state: "visible", timeout: timeoutMs });
   await assertNoPageErrors(panel, "initial side panel load");
   pass("Installed MV3 extension and side panel loaded", { extensionId });
