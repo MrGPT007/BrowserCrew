@@ -3,7 +3,7 @@
   "name": "BrowserCrew",
   "version": "0.1.0",
   "description": "Give your browser a job. Choose your AI. Stay in control.",
-  "permissions": ["sidePanel", "storage", "activeTab", "scripting", "tabs"],
+  "permissions": ["sidePanel", "storage", "activeTab", "scripting", "tabs", "downloads"],
   "optional_host_permissions": [
     "https://*/*",
     "http://*/*"
