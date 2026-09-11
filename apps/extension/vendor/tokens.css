@@ -1,0 +1,123 @@
+@layer nbs.tokens {
+  :root {
+    /* Fluid spacing */
+    --nbs-space-1: clamp(0.25rem, 0.22rem + 0.12vw, 0.375rem);
+    --nbs-space-2: clamp(0.5rem, 0.44rem + 0.18vw, 0.6875rem);
+    --nbs-space-3: clamp(0.75rem, 0.66rem + 0.28vw, 1rem);
+    --nbs-space-4: clamp(1rem, 0.86rem + 0.42vw, 1.375rem);
+    --nbs-space-5: clamp(1.25rem, 1.04rem + 0.62vw, 1.75rem);
+    --nbs-space-6: clamp(1.5rem, 1.18rem + 0.9vw, 2.25rem);
+    --nbs-space-8: clamp(2rem, 1.5rem + 1.45vw, 3.25rem);
+    --nbs-space-10: clamp(2.5rem, 1.72rem + 2.2vw, 4.5rem);
+    --nbs-space-12: clamp(3rem, 1.9rem + 3vw, 5.75rem);
+
+    /* Fluid typography */
+    --nbs-text-xs: clamp(0.72rem, 0.69rem + 0.08vw, 0.78rem);
+    --nbs-text-sm: clamp(0.82rem, 0.78rem + 0.12vw, 0.9rem);
+    --nbs-text-md: clamp(0.95rem, 0.9rem + 0.15vw, 1.05rem);
+    --nbs-text-lg: clamp(1.08rem, 0.98rem + 0.3vw, 1.28rem);
+    --nbs-text-xl: clamp(1.3rem, 1.12rem + 0.52vw, 1.65rem);
+    --nbs-text-2xl: clamp(1.65rem, 1.32rem + 0.95vw, 2.25rem);
+    --nbs-text-3xl: clamp(2rem, 1.46rem + 1.55vw, 3rem);
+    --nbs-text-display: clamp(2.5rem, 1.6rem + 2.7vw, 4.4rem);
+
+    --nbs-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --nbs-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --nbs-weight-normal: 500;
+    --nbs-weight-medium: 600;
+    --nbs-weight-bold: 750;
+    --nbs-leading-tight: 1.12;
+    --nbs-leading-body: 1.55;
+
+    /* Shape */
+    --nbs-border-width: 2px;
+    --nbs-border-width-strong: 3px;
+    --nbs-radius-sm: 8px;
+    --nbs-radius-md: 12px;
+    --nbs-radius-lg: 16px;
+    --nbs-radius-pill: 999px;
+
+    /* Tactile depth: Soft = shallow coated hardware */
+    --nbs-depth-rest-x: 3px;
+    --nbs-depth-rest-y: 3px;
+    --nbs-depth-hover-x: 1.5px;
+    --nbs-depth-hover-y: 1.5px;
+    --nbs-depth-active-x: 0px;
+    --nbs-depth-active-y: 0px;
+    --nbs-press-hover-x: 1.5px;
+    --nbs-press-hover-y: 1.5px;
+    --nbs-press-active-x: 3px;
+    --nbs-press-active-y: 3px;
+
+    /* Motion */
+    --nbs-motion-instant: 70ms;
+    --nbs-motion-fast: 105ms;
+    --nbs-motion-standard: 165ms;
+    --nbs-motion-slow: 250ms;
+    --nbs-ease-press: cubic-bezier(.2, 0, 0, 1);
+    --nbs-ease-release: cubic-bezier(.2, .85, .25, 1.04);
+    --nbs-ease-standard: cubic-bezier(.2, 0, 0, 1);
+
+    /* Layout */
+    --nbs-control-sm: clamp(2rem, 1.9rem + 0.3vw, 2.25rem);
+    --nbs-control-md: clamp(2.5rem, 2.34rem + 0.45vw, 2.875rem);
+    --nbs-control-lg: clamp(2.875rem, 2.62rem + 0.7vw, 3.375rem);
+    --nbs-content-width: 76rem;
+    --nbs-sidebar-width: clamp(14rem, 12rem + 4vw, 18rem);
+
+    /* Core palette */
+    --nbs-ink: #171717;
+    --nbs-paper: #f6f2ea;
+    --nbs-white: #fffdf8;
+    --nbs-black: #0b0b0b;
+    --nbs-blue: #86b6ff;
+    --nbs-blue-strong: #4788df;
+    --nbs-mint: #9be3bd;
+    --nbs-lilac: #c9b7ff;
+    --nbs-peach: #ffb8a3;
+    --nbs-yellow: #f4dc78;
+    --nbs-red: #ff8f8f;
+    --nbs-gray: #ded8ce;
+
+    /* Semantic colors: light */
+    --nbs-bg: var(--nbs-paper);
+    --nbs-surface: var(--nbs-white);
+    --nbs-surface-muted: #eee9df;
+    --nbs-surface-strong: #e3ddd2;
+    --nbs-text: var(--nbs-ink);
+    --nbs-text-muted: #5f5b55;
+    --nbs-border: var(--nbs-ink);
+    --nbs-shadow: #171717;
+    --nbs-primary: var(--nbs-blue);
+    --nbs-primary-strong: var(--nbs-blue-strong);
+    --nbs-success: var(--nbs-mint);
+    --nbs-warning: var(--nbs-yellow);
+    --nbs-danger: var(--nbs-red);
+    --nbs-info: var(--nbs-lilac);
+    --nbs-focus: #2f6fca;
+    --nbs-selection: #bed8ff;
+
+    color-scheme: light;
+  }
+
+  :root[data-theme="dark"],
+  [data-theme="dark"] {
+    --nbs-bg: #171717;
+    --nbs-surface: #242321;
+    --nbs-surface-muted: #2f2d2a;
+    --nbs-surface-strong: #393632;
+    --nbs-text: #f7f2e8;
+    --nbs-text-muted: #c1bbb1;
+    --nbs-border: #f1ebdf;
+    --nbs-shadow: #050505;
+    --nbs-primary: #8db9ff;
+    --nbs-primary-strong: #a9cbff;
+    --nbs-success: #87d9ae;
+    --nbs-warning: #e8cf68;
+    --nbs-danger: #f08a8a;
+    --nbs-info: #bda9fb;
+    --nbs-focus: #b9d4ff;
+    --nbs-selection: #315b91;
+    color-scheme: dark;
+  }
+}

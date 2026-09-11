@@ -1,0 +1,32 @@
+name: Extension quality
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Package unpacked extension
+        run: cd dist && zip -qr BrowserCrew-v0.1.0.zip extension SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: BrowserCrew-v0.1.0
+          path: |
+            dist/BrowserCrew-v0.1.0.zip
+            dist/SHA256SUMS
+            artifacts/

@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "BrowserCrew",
+  "version": "0.1.0",
+  "description": "Give your browser a job. Choose your AI. Review every change.",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "action": {
+    "default_title": "Open BrowserCrew"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'"
+  }
+}
