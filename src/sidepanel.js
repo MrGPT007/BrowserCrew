@@ -4,7 +4,10 @@ const presets = {
   ollama: { model: "qwen3:8b", baseUrl: "http://127.0.0.1:11434/v1", needsKey: false }
 };
 
-const state = { selectedTab: null, providerKind: "openai", currentTaskId: null, lastConnectionOk: false };
+const VIEW_KEY = "browsercrew.activeView";
+const THEME_KEY = "browsercrew.theme";
+const validViews = new Set(["workspace", "ai", "history", "settings"]);
+const state = { selectedTab: null, providerKind: "openai", currentTaskId: null, lastConnectionOk: false, hasSecret: false };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -13,15 +16,21 @@ document.addEventListener("DOMContentLoaded", init);
 async function init() {
   bindEvents();
   restoreTheme();
+  showView(localStorage.getItem(VIEW_KEY) || "workspace", false);
   const response = await send({ type: "GET_SETTINGS" });
   if (response.ok) applySettings(response.settings, response.hasSecret);
   await renderHistory();
 }
 
 function bindEvents() {
-  $$(".tab").forEach((button) => button.addEventListener("click", () => showView(button.dataset.view)));
+  $$(".function-tab").forEach((button) => {
+    button.addEventListener("click", () => showView(button.dataset.view));
+    button.addEventListener("keydown", onTabKeydown);
+  });
+  $$("[data-go-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.goView)));
   $$(".chip").forEach((button) => button.addEventListener("click", () => { $("#goalInput").value = button.dataset.example; }));
   $$(".provider-card").forEach((button) => button.addEventListener("click", () => chooseProvider(button.dataset.provider, true)));
+  $$("[data-theme-choice]").forEach((button) => button.addEventListener("click", () => setThemePreference(button.dataset.themeChoice)));
   $("#selectTabButton").addEventListener("click", selectCurrentTab);
   $("#testConnectionButton").addEventListener("click", testConnection);
   $("#runButton").addEventListener("click", runJob);
@@ -29,12 +38,41 @@ function bindEvents() {
   $("#stopButton").addEventListener("click", () => controlJob("STOP_TASK"));
   $("#refreshHistoryButton").addEventListener("click", renderHistory);
   $("#themeButton").addEventListener("click", toggleTheme);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if ((localStorage.getItem(THEME_KEY) || "system") === "system") applyThemePreference("system");
+  });
 }
 
-function showView(name) {
-  $$(".tab").forEach((tab) => { const active = tab.dataset.view === name; tab.classList.toggle("is-active", active); tab.setAttribute("aria-selected", String(active)); });
-  $$("[data-view-panel]").forEach((panel) => { const active = panel.dataset.viewPanel === name; panel.hidden = !active; panel.classList.toggle("is-active", active); });
-  if (name === "history") renderHistory();
+function showView(name, save = true) {
+  const viewName = validViews.has(name) ? name : "workspace";
+  $$(".function-tab").forEach((tab) => {
+    const active = tab.dataset.view === viewName;
+    tab.classList.toggle("is-active", active);
+    tab.setAttribute("aria-selected", String(active));
+    tab.tabIndex = active ? 0 : -1;
+  });
+  $$("[data-view-panel]").forEach((panel) => {
+    const active = panel.dataset.viewPanel === viewName;
+    panel.hidden = !active;
+    panel.classList.toggle("is-active", active);
+  });
+  if (save) localStorage.setItem(VIEW_KEY, viewName);
+  if (viewName === "history") renderHistory();
+  if (viewName === "settings") syncThemeChoices();
+}
+
+function onTabKeydown(event) {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const tabs = $$(".function-tab");
+  const current = tabs.indexOf(event.currentTarget);
+  let next = current;
+  if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
+  if (event.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
+  if (event.key === "Home") next = 0;
+  if (event.key === "End") next = tabs.length - 1;
+  tabs[next].focus();
+  showView(tabs[next].dataset.view);
 }
 
 async function selectCurrentTab() {
@@ -53,7 +91,7 @@ async function selectCurrentTab() {
 
 async function testConnection() {
   const settings = collectSettings();
-  const secret = $("#apiKeyInput").value;
+  const secret = secretForRequest();
   const box = $("#connectionResult");
   setBusy($("#testConnectionButton"), true, "Testing connection…");
   box.hidden = true;
@@ -67,7 +105,9 @@ async function testConnection() {
   setBusy($("#testConnectionButton"), false, "Test this AI connection");
   box.hidden = false;
   if (response.ok) {
-    state.lastConnectionOk = true; box.className = "connection-result success";
+    state.lastConnectionOk = true;
+    state.hasSecret = presets[state.providerKind].needsKey ? Boolean($("#apiKeyInput").value || state.hasSecret) : false;
+    box.className = "connection-result success";
     box.textContent = `✓ Connected. ${response.model} answered in about ${response.latencyMs} ms.`;
     setAiStatus("ok", "Connected"); toast("AI connection works.");
   } else {
@@ -82,9 +122,9 @@ async function runJob() {
   const goal = $("#goalInput").value.trim();
   if (!goal) { toast("Tell BrowserCrew what you want it to find."); return; }
   const settings = collectSettings();
-  const secret = $("#apiKeyInput").value;
+  const secret = secretForRequest();
   if (!(await requestOriginPermission(state.selectedTab.url))) { toast("This job needs access to the selected page. Approve Chrome's permission prompt to continue."); return; }
-  if (!(await requestOriginPermission(settings.baseUrl))) { toast("This job needs access to your selected AI service. Test the connection and approve Chrome's permission prompt."); return; }
+  if (!(await requestOriginPermission(settings.baseUrl))) { toast("This job needs access to your selected AI service. Open Connect AI, test it, and approve Chrome's permission prompt."); return; }
   await send({ type: "SAVE_SETTINGS", settings, secret });
   showRunState("running");
   setProgress(0);
@@ -161,17 +201,27 @@ function chooseProvider(kind, overwrite = false) {
   state.providerKind = kind;
   $$(".provider-card").forEach((card) => { const selected = card.dataset.provider === kind; card.classList.toggle("is-selected", selected); card.setAttribute("aria-checked", String(selected)); });
   const preset = presets[kind];
-  if (overwrite) { $("#modelInput").value = preset.model; $("#serverInput").value = preset.baseUrl; $("#apiKeyInput").value = ""; state.lastConnectionOk = false; setAiStatus("idle", "Not tested"); }
+  if (overwrite) {
+    $("#modelInput").value = preset.model; $("#serverInput").value = preset.baseUrl; $("#apiKeyInput").value = "";
+    state.lastConnectionOk = false; setAiStatus("idle", "Not tested");
+  }
   $("#apiKeyGroup").hidden = !preset.needsKey;
 }
 
 function applySettings(settings, hasSecret) {
+  state.hasSecret = Boolean(hasSecret);
   chooseProvider(settings.kind || "openai", false);
   $("#modelInput").value = settings.model || presets[state.providerKind].model;
   $("#serverInput").value = settings.baseUrl || presets[state.providerKind].baseUrl;
   if (hasSecret) $("#apiKeyInput").placeholder = "Saved for this Chrome session";
 }
+
 function collectSettings() { return { kind: state.providerKind, model: $("#modelInput").value.trim(), baseUrl: $("#serverInput").value.trim() }; }
+function secretForRequest() {
+  if (!presets[state.providerKind].needsKey) return "";
+  const typed = $("#apiKeyInput").value;
+  return typed.length ? typed : undefined;
+}
 function setAiStatus(stateName,label) { const el=$("#aiStatus"); el.dataset.state=stateName; el.querySelector(".status-label").textContent=label; }
 function setPageStatus(stateName,label) { const el=$("#pageStatus"); el.dataset.state=stateName; el.querySelector(".status-label").textContent=label; }
 function setBusy(button,busy,label) { button.disabled=busy; button.textContent=label; }
@@ -180,5 +230,22 @@ function toast(message) { const el=$("#toast"); el.textContent=message; el.hidde
 function send(message) { return chrome.runtime.sendMessage(message); }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g,(char)=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char])); }
 function escapeAttr(value) { return escapeHtml(value); }
-function restoreTheme() { const saved=localStorage.getItem("browsercrew.theme"); const theme=saved || (matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"); document.documentElement.dataset.theme=theme; }
-function toggleTheme() { const next=document.documentElement.dataset.theme==="dark"?"light":"dark"; document.documentElement.dataset.theme=next; localStorage.setItem("browsercrew.theme",next); }
+
+function restoreTheme() { applyThemePreference(localStorage.getItem(THEME_KEY) || "system"); }
+function setThemePreference(preference) { localStorage.setItem(THEME_KEY, preference); applyThemePreference(preference); syncThemeChoices(); }
+function applyThemePreference(preference) {
+  const effective = preference === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : preference;
+  document.documentElement.dataset.theme = effective === "dark" ? "dark" : "light";
+}
+function syncThemeChoices() {
+  const current = localStorage.getItem(THEME_KEY) || "system";
+  $$("[data-theme-choice]").forEach((button) => {
+    const selected = button.dataset.themeChoice === current;
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-checked", String(selected));
+  });
+}
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  setThemePreference(next);
+}
