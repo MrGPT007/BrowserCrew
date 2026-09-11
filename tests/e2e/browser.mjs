@@ -65,20 +65,20 @@ try {
   for(let i=1;i<=5;i++){const page=await context.newPage();await page.goto(base+'/supplier-'+i);pages.push(page);}
   panel=await context.newPage();await panel.goto('chrome-extension://'+id+'/index.html');
   await panel.locator('h1').filter({hasText:'Give your browser'}).waitFor();
-  await panel.screenshot({path:'artifacts/workspace-light.png',fullPage:true});
+  await panel.screenshot({path:'artifacts/workspace-light.png',fullPage:true,animations:'disabled'});
   await panel.locator('#theme').click();
   assert.equal(await panel.locator('html').getAttribute('data-theme'),'dark');
-  await panel.screenshot({path:'artifacts/workspace-dark.png',fullPage:true});
+  await panel.screenshot({path:'artifacts/workspace-dark.png',fullPage:true,animations:'disabled'});
   await panel.locator('#theme').click();
   for(const width of [320,390,768]){
     await panel.setViewportSize({width,height:1000});
     assert.ok(await panel.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal overflow at '+width);
-    await panel.screenshot({path:'artifacts/workspace-'+width+'.png',fullPage:true});
+    await panel.screenshot({path:'artifacts/workspace-'+width+'.png',fullPage:true,animations:'disabled'});
   }
   await panel.emulateMedia({reducedMotion:'reduce',forcedColors:'active'});
   await panel.locator('html').evaluate(el=>el.dir='rtl');
   assert.ok(await panel.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  await panel.screenshot({path:'artifacts/workspace-rtl-forced-colors.png',fullPage:true});
+  await panel.screenshot({path:'artifacts/workspace-rtl-forced-colors.png',fullPage:true,animations:'disabled'});
   await panel.locator('html').evaluate(el=>el.dir='ltr');
   await panel.emulateMedia({reducedMotion:'no-preference',forcedColors:'none'});
   await panel.setViewportSize({width:1440,height:1100});
@@ -96,7 +96,7 @@ try {
   assert.equal(research.findings.length,5);assert.equal(research.observations.length,5);
   assert.ok(captured.every(raw=>!raw.includes(secret)),'Secret form values must not reach provider transport');
   await wait(async()=> await panel.locator('.finding').count()===5);
-  await panel.screenshot({path:'artifacts/research-result.png',fullPage:true});
+  await panel.screenshot({path:'artifacts/research-result.png',fullPage:true,animations:'disabled'});
 
   const form=await context.newPage();await form.goto(base+'/form');
   const tabs=await send(panel,'tabs');const formTab=tabs.find(t=>t.url===base+'/form');
