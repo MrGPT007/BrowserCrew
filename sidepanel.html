@@ -30,6 +30,15 @@
       <button class="function-tab" id="tab-ai" type="button" data-view="ai" role="tab" aria-controls="view-ai" aria-selected="false" tabindex="-1">
         <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg></span><span>Connect AI</span>
       </button>
+      <button class="function-tab" id="tab-tools" type="button" data-view="tools" role="tab" aria-controls="view-tools" aria-selected="false" tabindex="-1">
+        <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5 5L4 17l3 3 5.7-5.7a4 4 0 0 0 5-5l-2.5 2.5-3-3z"/></svg></span><span>Tools</span>
+      </button>
+      <button class="function-tab" id="tab-skills" type="button" data-view="skills" role="tab" aria-controls="view-skills" aria-selected="false" tabindex="-1">
+        <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-3-6 3z"/><path d="M9 8h6M9 11h4"/></svg></span><span>Skills</span>
+      </button>
+      <button class="function-tab" id="tab-memory" type="button" data-view="memory" role="tab" aria-controls="view-memory" aria-selected="false" tabindex="-1">
+        <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg></span><span>Memory</span>
+      </button>
       <button class="function-tab" id="tab-history" type="button" data-view="history" role="tab" aria-controls="view-history" aria-selected="false" tabindex="-1">
         <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6V4M12 8v4l2.8 1.8"/></svg></span><span>History</span>
       </button>
@@ -56,11 +65,13 @@
         <div class="card-heading"><div><p class="step-label">2 · JOB</p><h2>Tell BrowserCrew what to do</h2></div><span class="badge badge-safe">Read only</span></div>
         <label class="field-label" for="goalInput">What should I find on this page?</label>
         <textarea id="goalInput" rows="4" placeholder="Example: Find the product name and price on this page.">Find the product name and price on this page.</textarea>
-        <p class="helper">Use normal words. This first workflow reads one page and returns an answer with the page address as evidence.</p>
+        <p class="helper">Use normal words. BrowserCrew can return several facts from one selected page and checks the values against the page text before finishing.</p>
         <div class="example-row" aria-label="Job examples">
           <button class="chip" type="button" data-example="Find the product name and price on this page.">Product + price</button>
           <button class="chip" type="button" data-example="Find the main heading and the first price shown on this page.">Heading + price</button>
+          <button class="chip" type="button" data-example="Find the company name, phone number, and email address shown on this page.">Contact details</button>
         </div>
+        <button class="text-button workspace-skill-link" type="button" data-go-view="skills">Save or reuse these instructions</button>
       </article>
 
       <article class="card start-card">
@@ -88,7 +99,7 @@
       </article>
 
       <article class="card result-card" id="resultCard" hidden aria-live="polite">
-        <div class="card-heading"><div><p class="step-label">RESULT</p><h2>Here’s what I found</h2></div><span class="badge badge-safe">Verified</span></div>
+        <div class="card-heading"><div><p class="step-label">RESULT</p><h2>Here’s what I found</h2></div><span class="badge badge-safe">Checked</span></div>
         <dl class="result-grid" id="resultGrid"></dl><div class="evidence-box" id="evidenceBox"></div>
       </article>
     </section>
@@ -133,6 +144,74 @@
       </article>
     </section>
 
+    <section class="view" id="view-tools" data-view-panel="tools" role="tabpanel" aria-labelledby="tab-tools" hidden>
+      <header class="view-heading">
+        <p class="eyebrow">TOOLS</p>
+        <h1>See what BrowserCrew can use</h1>
+        <p class="view-intro">This list comes from the running BrowserCrew engine, so it shows capabilities that are actually available in this build.</p>
+      </header>
+      <article class="card card-accent">
+        <div class="card-heading"><div><p class="step-label">AVAILABLE NOW</p><h2>Built-in browser tools</h2></div><span class="badge badge-safe">Read only</span></div>
+        <div class="tool-list" id="toolList"></div>
+      </article>
+      <article class="card">
+        <div class="card-heading"><div><p class="step-label">EXTERNAL TOOLS</p><h2>Tool-server connections are not active yet</h2></div><span class="badge">Later</span></div>
+        <p class="helper">A tool server can give BrowserCrew extra abilities from another service. The technical name is MCP. BrowserCrew will not show a connect button until identity, permission, and write-safety checks are implemented.</p>
+        <p class="recommendation">💡 This is intentionally locked for now. A connection test alone must never grant every external tool permission.</p>
+      </article>
+    </section>
+
+    <section class="view" id="view-skills" data-view-panel="skills" role="tabpanel" aria-labelledby="tab-skills" hidden>
+      <header class="view-heading">
+        <p class="eyebrow">SKILLS</p>
+        <h1>Reuse jobs you do often</h1>
+        <p class="view-intro">A skill in this build is a saved read-only instruction. It fills the Workspace job box for you; it does not gain new permissions.</p>
+      </header>
+      <article class="card card-accent">
+        <div class="card-heading"><div><p class="step-label">STARTER SKILLS</p><h2>Try a ready-made job</h2></div><span class="badge badge-safe">Read only</span></div>
+        <div class="skill-list">
+          <article class="skill-card"><div><strong>Product and price</strong><p>Find the product name and price on this page.</p></div><button class="button button-small tactile" type="button" data-use-goal="Find the product name and price on this page." data-use-name="Product and price">Use</button></article>
+          <article class="skill-card"><div><strong>Contact details</strong><p>Find the company name, phone number, and email address shown on this page.</p></div><button class="button button-small tactile" type="button" data-use-goal="Find the company name, phone number, and email address shown on this page." data-use-name="Contact details">Use</button></article>
+        </div>
+      </article>
+      <article class="card">
+        <div class="card-heading"><div><p class="step-label">SAVE YOUR OWN</p><h2>Keep these instructions for later</h2></div></div>
+        <label class="field-label" for="skillNameInput">Name this reusable job</label>
+        <input id="skillNameInput" type="text" maxlength="80" placeholder="Example: Supplier details" />
+        <p class="helper">Pick a short name you will recognize later.</p>
+        <label class="field-label" for="skillGoalInput">Instructions to reuse</label>
+        <textarea id="skillGoalInput" rows="4" maxlength="1500" placeholder="Example: Find the company name, phone number, and email address shown on this page."></textarea>
+        <p class="helper">These instructions will be copied into Workspace when you use the skill. The saved skill stays read only.</p>
+        <div class="button-row"><button class="button tactile" id="copyWorkspaceToSkillButton" type="button">Use current Workspace instructions</button><button class="button button-primary tactile" id="saveSkillButton" type="button">Save reusable job</button></div>
+      </article>
+      <article class="card">
+        <div class="card-heading"><div><p class="step-label">SAVED ON THIS DEVICE</p><h2>Your reusable jobs</h2></div><span class="badge" id="skillCountBadge">0 saved</span></div>
+        <div class="skill-list" id="savedSkillList"></div>
+      </article>
+    </section>
+
+    <section class="view" id="view-memory" data-view-panel="memory" role="tabpanel" aria-labelledby="tab-memory" hidden>
+      <header class="view-heading">
+        <p class="eyebrow">MEMORY</p>
+        <h1>See what BrowserCrew remembers</h1>
+        <p class="view-intro">BrowserCrew memory is inspectable local data in this build: job history, reusable jobs, and your saved AI choice. Secret keys are not stored in long-term memory.</p>
+      </header>
+      <article class="card card-accent">
+        <div class="card-heading"><div><p class="step-label">MEMORY SUMMARY</p><h2>Saved on this device</h2></div><button class="button button-small tactile" id="refreshMemoryButton" type="button">Refresh</button></div>
+        <div class="memory-grid" id="memorySummary"></div>
+      </article>
+      <article class="card danger-card">
+        <div class="card-heading"><div><p class="step-label">FORGET SAVED INFORMATION</p><h2>Delete only what you choose</h2></div></div>
+        <p class="helper">These buttons permanently delete the selected BrowserCrew data from this Chrome profile. They do not delete information already sent to an AI service.</p>
+        <div class="memory-actions">
+          <button class="button tactile" type="button" data-clear-memory="tasks">Forget job history</button>
+          <button class="button tactile" type="button" data-clear-memory="skills">Forget reusable jobs</button>
+          <button class="button button-danger tactile" type="button" data-clear-memory="ai">Forget saved AI setup</button>
+        </div>
+        <p class="recommendation">💡 Recommended: delete only the category you no longer want BrowserCrew to remember.</p>
+      </article>
+    </section>
+
     <section class="view" id="view-history" data-view-panel="history" role="tabpanel" aria-labelledby="tab-history" hidden>
       <header class="view-heading">
         <p class="eyebrow">HISTORY</p>
@@ -149,7 +228,7 @@
       <header class="view-heading">
         <p class="eyebrow">SETTINGS</p>
         <h1>Set up BrowserCrew your way</h1>
-        <p class="view-intro">These choices affect the BrowserCrew interface itself. AI connection choices stay in the Connect AI tab.</p>
+        <p class="view-intro">These choices affect the BrowserCrew interface itself. AI connection choices stay in Connect AI, and saved-data controls stay in Memory.</p>
       </header>
 
       <article class="card">
@@ -167,8 +246,9 @@
         <div class="card-heading"><div><p class="step-label">PRIVACY</p><h2>What BrowserCrew keeps</h2></div><span class="badge badge-safe">Local first</span></div>
         <div class="plain-list settings-list">
           <div><span>🧾</span><p><strong>Job history:</strong> the job goal, status, result, and evidence are saved on this device so interrupted work is not lost.</p></div>
-          <div><span>🔑</span><p><strong>AI secret key:</strong> kept only for the current Chrome session. It is not written into job history.</p></div>
-          <div><span>📄</span><p><strong>Page text:</strong> used for the active job. The raw page-text snapshot is not copied into saved job history by this first workflow.</p></div>
+          <div><span>🔖</span><p><strong>Reusable jobs:</strong> skill names and instructions are saved on this device until you delete them in Memory.</p></div>
+          <div><span>🔑</span><p><strong>AI secret key:</strong> kept only for the current Chrome session. It is not written into job history or reusable jobs.</p></div>
+          <div><span>📄</span><p><strong>Page text:</strong> used for the active job. The raw page-text snapshot is not copied into saved job history by this workflow.</p></div>
         </div>
       </article>
 
