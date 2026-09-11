@@ -80,7 +80,7 @@ const invoiceRows = fixture.match(/data-browsercrew-invoice data-invoice-id=/g) 
 if (invoiceRows.length !== 4) throw new Error("W5 controlled portal must expose exactly four invoice records for selection tests.");
 
 const permissionsDoc = await readFile("docs/PERMISSIONS.md", "utf8");
-for (const disclosure of ["`downloads`", "filenames alone", "positive received bytes", "will not automatically create a duplicate"]) {
+for (const disclosure of ["`downloads`", "filename alone", "positive received bytes", "does not automatically create a duplicate"]) {
   if (!permissionsDoc.includes(disclosure)) throw new Error(`W5 downloads permission disclosure is incomplete: ${disclosure}`);
 }
 
