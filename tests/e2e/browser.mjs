@@ -132,4 +132,6 @@ try {
   const version=context.browser()?.version() || await worker.evaluate(()=>navigator.userAgent);
   await writeFile('artifacts/browser-evidence.json',JSON.stringify({browser:version,provider:'scripted local HTTP fixture, not an LLM',tests:['production manifest loads without automatic site access','five-page research via actual browser adapter','password/hidden-field canaries absent from provider requests','approved form fill with exact field check','stale-target rejection','uncertain-write resume blocked','history survives browser restart','task deletion','light/dark captures','320/390/768 layout checks','RTL/forced-colors/reduced-motion capture'],limitations:['fixture copy has explicit local host grant','no real cloud or LM Studio/Ollama model run','no human screen-reader review','screenshots need human visual review']},null,2));
   console.log('Packaged extension and deterministic browser scenarios passed.');
+  // Fixture-only previews allow visual review when an authoring workspace is offline.
+  for (const name of ['workspace-light.png','workspace-320.png','workspace-dark.png']) console.log('BROWSERCREW_VISUAL:' + name + ':' + (await readFile('artifacts/' + name)).toString('base64'));
 } finally { if(context)await context.close();server.close();await rm(temp,{recursive:true,force:true}); }
