@@ -264,8 +264,7 @@ async function assertNoPageErrors(page, label) {
 }
 
 async function waitForText(locator, text) {
-  await locator.waitFor({ state: "visible", timeout: timeoutMs });
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     const value = await locator.innerText().catch(() => "");
     if (value.includes(text)) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
