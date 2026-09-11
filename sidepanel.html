@@ -11,49 +11,74 @@
 <body>
   <main class="app-shell" id="app">
     <header class="topbar">
-      <div><p class="eyebrow">BROWSERCREW</p><h1>Give your browser a job.</h1></div>
-      <button class="icon-button tactile" id="themeButton" type="button" aria-label="Switch color theme" title="Switch color theme">◐</button>
+      <div class="brand-lockup">
+        <span class="brand-mark" aria-hidden="true">B</span>
+        <div class="brand-copy"><strong>BrowserCrew</strong><span>Your browser workbench</span></div>
+      </div>
+      <button class="icon-button tactile" id="themeButton" type="button" aria-label="Switch between light and dark" title="Switch between light and dark">◐</button>
     </header>
 
-    <section class="status-strip" aria-label="Connection and page status">
-      <div class="status-item" id="aiStatus" data-state="idle"><span class="status-dot" aria-hidden="true"></span><span><strong>AI:</strong> <span class="status-label">Not tested</span></span></div>
-      <div class="status-item" id="pageStatus" data-state="idle"><span class="status-dot" aria-hidden="true"></span><span><strong>Page:</strong> <span class="status-label">Not selected</span></span></div>
+    <section class="status-strip" aria-label="Ready status">
+      <div class="status-item" id="aiStatus" data-state="idle"><span class="status-dot" aria-hidden="true"></span><span><strong>AI</strong><small class="status-label">Not tested</small></span></div>
+      <div class="status-item" id="pageStatus" data-state="idle"><span class="status-dot" aria-hidden="true"></span><span><strong>Page</strong><small class="status-label">Not selected</small></span></div>
     </section>
 
-    <nav class="tabs" aria-label="BrowserCrew sections">
-      <button class="tab is-active" type="button" data-view="task" aria-selected="true">New job</button>
-      <button class="tab" type="button" data-view="connection" aria-selected="false">Choose AI</button>
-      <button class="tab" type="button" data-view="history" aria-selected="false">History</button>
+    <nav class="function-tabs" aria-label="BrowserCrew sections" role="tablist">
+      <button class="function-tab is-active" id="tab-workspace" type="button" data-view="workspace" role="tab" aria-controls="view-workspace" aria-selected="true">
+        <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h7v6H4zM13 5h7v4h-7zM13 11h7v8h-7zM4 13h7v6H4z"/></svg></span><span>Workspace</span>
+      </button>
+      <button class="function-tab" id="tab-ai" type="button" data-view="ai" role="tab" aria-controls="view-ai" aria-selected="false" tabindex="-1">
+        <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg></span><span>Connect AI</span>
+      </button>
+      <button class="function-tab" id="tab-history" type="button" data-view="history" role="tab" aria-controls="view-history" aria-selected="false" tabindex="-1">
+        <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6V4M12 8v4l2.8 1.8"/></svg></span><span>History</span>
+      </button>
+      <button class="function-tab" id="tab-settings" type="button" data-view="settings" role="tab" aria-controls="view-settings" aria-selected="false" tabindex="-1">
+        <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 13.5v-3l-2-.6a7 7 0 0 0-.7-1.7l1-1.8-2.1-2.1-1.8 1A7 7 0 0 0 11.5 5L11 3H8l-.6 2a7 7 0 0 0-1.7.7l-1.8-1-2.1 2.1 1 1.8A7 7 0 0 0 2 10.5l-2 .5v3l2 .6a7 7 0 0 0 .7 1.7l-1 1.8 2.1 2.1 1.8-1a7 7 0 0 0 1.7.7l.6 2h3l.6-2a7 7 0 0 0 1.7-.7l1.8 1 2.1-2.1-1-1.8a7 7 0 0 0 .7-1.7z" transform="translate(1 -1) scale(.92)"/></svg></span><span>Settings</span>
+      </button>
     </nav>
 
-    <section class="view is-active" id="view-task" data-view-panel="task">
+    <section class="view is-active" id="view-workspace" data-view-panel="workspace" role="tabpanel" aria-labelledby="tab-workspace">
+      <header class="view-heading">
+        <p class="eyebrow">WORKSPACE</p>
+        <h1>Run a browser job</h1>
+        <p class="view-intro">Choose one page, tell BrowserCrew what you need, then review exactly what the job is allowed to do.</p>
+      </header>
+
       <article class="card card-accent">
-        <div class="card-heading"><div><p class="step-label">STEP 1</p><h2>Choose the page to work on</h2></div><span class="badge">Current tab</span></div>
-        <p class="helper">BrowserCrew only reads the page you choose for this job. It does not scan your other tabs.</p>
+        <div class="card-heading"><div><p class="step-label">1 · PAGE</p><h2>Choose where to work</h2></div><span class="badge">Current tab</span></div>
+        <p class="helper">BrowserCrew reads only the page you choose for this job. Your other tabs stay out of scope.</p>
         <button class="button tactile full" id="selectTabButton" type="button">Use the page I’m looking at</button>
         <div class="selection-summary" id="selectedTabSummary" hidden></div>
       </article>
 
       <article class="card">
-        <div class="card-heading"><div><p class="step-label">STEP 2</p><h2>Tell BrowserCrew what to find</h2></div></div>
-        <label class="field-label" for="goalInput">What should I do on this page?</label>
+        <div class="card-heading"><div><p class="step-label">2 · JOB</p><h2>Tell BrowserCrew what to do</h2></div><span class="badge badge-safe">Read only</span></div>
+        <label class="field-label" for="goalInput">What should I find on this page?</label>
         <textarea id="goalInput" rows="4" placeholder="Example: Find the product name and price on this page.">Find the product name and price on this page.</textarea>
-        <p class="helper">Use normal words. For this first build, BrowserCrew reads one page and returns a verified answer with the page address as evidence.</p>
-        <div class="example-row" aria-label="Task examples">
+        <p class="helper">Use normal words. This first workflow reads one page and returns an answer with the page address as evidence.</p>
+        <div class="example-row" aria-label="Job examples">
           <button class="chip" type="button" data-example="Find the product name and price on this page.">Product + price</button>
           <button class="chip" type="button" data-example="Find the main heading and the first price shown on this page.">Heading + price</button>
         </div>
       </article>
 
-      <article class="card">
-        <div class="card-heading"><div><p class="step-label">STEP 3</p><h2>Review how this job will run</h2></div><span class="badge badge-safe">Read only</span></div>
-        <div class="plain-list">
-          <div><span>👀</span><p><strong>Reads:</strong> visible text from the selected page.</p></div>
-          <div><span>🤖</span><p><strong>Sends to AI:</strong> your job plus a bounded page-text snapshot.</p></div>
-          <div><span>✋</span><p><strong>Changes:</strong> none. This first workflow cannot click submit, buy, delete, or message anyone.</p></div>
+      <article class="card start-card">
+        <div class="card-heading"><div><p class="step-label">3 · REVIEW</p><h2>Check and start</h2></div></div>
+        <div class="readiness-list">
+          <div><span class="mini-icon" aria-hidden="true">◎</span><p><strong>Page access</strong><span>Choose the exact page above. Chrome asks before BrowserCrew can read a new site.</span></p></div>
+          <div><span class="mini-icon" aria-hidden="true">✦</span><p><strong>AI connection</strong><span>BrowserCrew uses the AI you choose. Test it once before starting.</span></p><button class="text-button" type="button" data-go-view="ai">Open AI setup</button></div>
         </div>
+        <details class="guardrail-details">
+          <summary>What this job can and cannot do</summary>
+          <div class="plain-list">
+            <div><span>👀</span><p><strong>Reads:</strong> visible text from the selected page.</p></div>
+            <div><span>🤖</span><p><strong>Sends to AI:</strong> your job plus a bounded page-text snapshot.</p></div>
+            <div><span>✋</span><p><strong>Changes:</strong> none. This workflow cannot submit, buy, delete, or message anyone.</p></div>
+          </div>
+        </details>
         <button class="button button-primary tactile full" id="runButton" type="button">Start this read-only job</button>
-        <p class="recommendation">💡 Recommended: start with this safe example to confirm your AI connection works before adding write permissions.</p>
+        <p class="recommendation">💡 Recommended: test your AI connection first. That prevents a job from failing after the page has already been read.</p>
       </article>
 
       <article class="card run-card" id="runCard" hidden aria-live="polite">
@@ -68,33 +93,39 @@
       </article>
     </section>
 
-    <section class="view" id="view-connection" data-view-panel="connection" hidden>
+    <section class="view" id="view-ai" data-view-panel="ai" role="tabpanel" aria-labelledby="tab-ai" hidden>
+      <header class="view-heading">
+        <p class="eyebrow">CONNECT AI</p>
+        <h1>Choose where BrowserCrew thinks</h1>
+        <p class="view-intro">Pick a cloud service or a model running on your computer. BrowserCrew will test the connection before you use it.</p>
+      </header>
+
       <article class="card card-accent">
-        <p class="step-label">CHOOSE YOUR AI</p><h2>Pick where BrowserCrew should think</h2>
-        <p class="helper">Cloud AI sends approved job text over the internet. Local AI keeps model requests on your computer when you use a loopback address such as 127.0.0.1.</p>
-        <div class="provider-grid" role="radiogroup" aria-label="AI connection preset">
-          <button class="provider-card tactile is-selected" type="button" data-provider="openai" role="radio" aria-checked="true"><strong>OpenAI API</strong><span>Cloud · easiest cloud test</span></button>
-          <button class="provider-card tactile" type="button" data-provider="lmstudio" role="radio" aria-checked="false"><strong>LM Studio</strong><span>Local · OpenAI-compatible</span></button>
-          <button class="provider-card tactile" type="button" data-provider="ollama" role="radio" aria-checked="false"><strong>Ollama</strong><span>Local · OpenAI-compatible</span></button>
+        <div class="card-heading"><div><p class="step-label">1 · AI SERVICE</p><h2>Choose your AI</h2></div><span class="badge">One per job</span></div>
+        <div class="provider-grid" role="radiogroup" aria-label="AI connection choice">
+          <button class="provider-card tactile is-selected" type="button" data-provider="openai" role="radio" aria-checked="true"><strong>OpenAI API</strong><span>Cloud · simple cloud test</span></button>
+          <button class="provider-card tactile" type="button" data-provider="lmstudio" role="radio" aria-checked="false"><strong>LM Studio</strong><span>Local · runs on this computer</span></button>
+          <button class="provider-card tactile" type="button" data-provider="ollama" role="radio" aria-checked="false"><strong>Ollama</strong><span>Local · runs on this computer</span></button>
         </div>
       </article>
 
       <article class="card">
+        <div class="card-heading"><div><p class="step-label">2 · CONNECTION</p><h2>Tell BrowserCrew where to reach it</h2></div></div>
         <label class="field-label" for="modelInput">AI model name</label>
         <input id="modelInput" type="text" autocomplete="off" value="gpt-5.6" />
         <p class="helper">This is the model BrowserCrew asks to do the job. Example: <code>gpt-5.6</code> for OpenAI, or the exact model name loaded in LM Studio.</p>
-        <p class="recommendation">💡 Use a model that can follow instructions and return JSON. If the name is wrong, the connection test will tell you before a job starts.</p>
+        <p class="recommendation">💡 Use a model that can follow instructions and return structured answers. If the name is wrong, the test below will tell you.</p>
 
-        <label class="field-label" for="serverInput">Where should BrowserCrew send the AI request?</label>
+        <label class="field-label" for="serverInput">AI service address</label>
         <input id="serverInput" type="url" autocomplete="off" value="https://api.openai.com/v1" />
-        <p class="helper">This is the web address of your AI service. You usually do not need to change the preset.</p>
+        <p class="helper">BrowserCrew sends AI requests to this address. Most people should keep the address filled in by the choice above.</p>
         <div class="example-box">📌 Examples: OpenAI → <code>https://api.openai.com/v1</code> · LM Studio → <code>http://127.0.0.1:1234/v1</code> · Ollama → <code>http://127.0.0.1:11434/v1</code></div>
 
         <div id="apiKeyGroup">
           <label class="field-label" for="apiKeyInput">Secret key for this AI service</label>
           <input id="apiKeyInput" type="password" autocomplete="off" placeholder="Paste your API key" />
-          <p class="helper">BrowserCrew uses this key only to talk to the selected AI service. The key is kept in Chrome’s session storage and is not written into task history.</p>
-          <p class="recommendation">🔒 Recommended: use a dedicated API key with spending limits. Local LM Studio and Ollama usually do not need a key.</p>
+          <p class="helper">The key lets BrowserCrew talk to your selected cloud AI. It stays in Chrome’s session storage and is not copied into job history.</p>
+          <p class="recommendation">🔒 Recommended: use a dedicated key with spending limits. Local LM Studio and Ollama usually do not need a key.</p>
         </div>
 
         <button class="button button-primary tactile full" id="testConnectionButton" type="button">Test this AI connection</button>
@@ -102,11 +133,49 @@
       </article>
     </section>
 
-    <section class="view" id="view-history" data-view-panel="history" hidden>
+    <section class="view" id="view-history" data-view-panel="history" role="tabpanel" aria-labelledby="tab-history" hidden>
+      <header class="view-heading">
+        <p class="eyebrow">HISTORY</p>
+        <h1>See what BrowserCrew did</h1>
+        <p class="view-intro">Finished and interrupted jobs are saved on this device so you can see what happened after the side panel closes.</p>
+      </header>
       <article class="card">
         <div class="card-heading"><div><p class="step-label">SAVED ON THIS DEVICE</p><h2>Job history</h2></div><button class="button button-small tactile" id="refreshHistoryButton" type="button">Refresh</button></div>
-        <p class="helper">Finished and interrupted jobs are kept here so closing the side panel or restarting Chrome does not erase what happened.</p>
         <div class="history-list" id="historyList"></div>
+      </article>
+    </section>
+
+    <section class="view" id="view-settings" data-view-panel="settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+      <header class="view-heading">
+        <p class="eyebrow">SETTINGS</p>
+        <h1>Set up BrowserCrew your way</h1>
+        <p class="view-intro">These choices affect the BrowserCrew interface itself. AI connection choices stay in the Connect AI tab.</p>
+      </header>
+
+      <article class="card">
+        <div class="card-heading"><div><p class="step-label">APPEARANCE</p><h2>Choose how BrowserCrew looks</h2></div></div>
+        <p class="helper">Pick the look that is easiest for you to read. This does not change how jobs run.</p>
+        <div class="theme-choice-grid" role="radiogroup" aria-label="Color theme">
+          <button class="setting-choice tactile" type="button" data-theme-choice="system" role="radio" aria-checked="false"><strong>Use my computer setting</strong><span>Follows your device when it changes between light and dark.</span></button>
+          <button class="setting-choice tactile" type="button" data-theme-choice="light" role="radio" aria-checked="false"><strong>Always light</strong><span>Keeps the warm light theme on all the time.</span></button>
+          <button class="setting-choice tactile" type="button" data-theme-choice="dark" role="radio" aria-checked="false"><strong>Always dark</strong><span>Keeps the dark theme on all the time.</span></button>
+        </div>
+        <p class="recommendation">💡 Recommended: use your computer setting unless you prefer one theme all the time.</p>
+      </article>
+
+      <article class="card">
+        <div class="card-heading"><div><p class="step-label">PRIVACY</p><h2>What BrowserCrew keeps</h2></div><span class="badge badge-safe">Local first</span></div>
+        <div class="plain-list settings-list">
+          <div><span>🧾</span><p><strong>Job history:</strong> the job goal, status, result, and evidence are saved on this device so interrupted work is not lost.</p></div>
+          <div><span>🔑</span><p><strong>AI secret key:</strong> kept only for the current Chrome session. It is not written into job history.</p></div>
+          <div><span>📄</span><p><strong>Page text:</strong> used for the active job. The raw page-text snapshot is not copied into saved job history by this first workflow.</p></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-heading"><div><p class="step-label">SITE ACCESS</p><h2>BrowserCrew asks before reading a new site</h2></div></div>
+        <p class="helper">When you choose a page, Chrome asks whether BrowserCrew may read that site. Saying no leaves the page untouched.</p>
+        <div class="example-box">💡 Example: giving access to <code>shop.example.com</code> does not automatically give BrowserCrew access to a different website.</div>
       </article>
     </section>
 
