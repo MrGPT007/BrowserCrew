@@ -1,3 +1,5 @@
+import "./compare-ui.js";
+
 const FORM_PORT = "browsercrew-form-write";
 const formState = { mode: "read", selectedTab: null, formTaskId: null, changeHash: null };
 const q = (selector) => document.querySelector(selector);
@@ -22,7 +24,7 @@ async function captureSelectedPage() {
 }
 
 function setFormMode(mode, cancelPending = true) {
-  const next = mode === "form" ? "form" : "read";
+  const next = mode === "form" || mode === "compare" ? mode : "read";
   if (cancelPending && next !== formState.mode && formState.formTaskId) cancelFormPreview(true);
   formState.mode = next;
   qa("[data-job-mode]").forEach((button) => {
@@ -30,16 +32,33 @@ function setFormMode(mode, cancelPending = true) {
     button.classList.toggle("is-selected", selected);
     button.setAttribute("aria-checked", String(selected));
   });
+
   const formMode = next === "form";
-  setHidden("#readJobCard", formMode);
-  setHidden("#readStartCard", formMode);
+  const compareMode = next === "compare";
+  const readMode = next === "read";
+
+  setHidden("#singlePageCard", compareMode);
+  setHidden("#readJobCard", !readMode);
+  setHidden("#readStartCard", !readMode);
   setHidden("#formJobCard", !formMode);
-  if (formMode) {
+  setHidden("#compareJobCard", !compareMode);
+
+  const intro = q("#view-workspace .view-intro");
+  if (intro) intro.textContent = compareMode
+    ? "Choose the open pages you want to compare, name the facts that matter, then review a source-linked comparison table."
+    : "Choose one page, tell BrowserCrew what you need, then review exactly what the job is allowed to do.";
+
+  if (!readMode) {
     setHidden("#runCard", true);
     setHidden("#resultCard", true);
-  } else {
+  }
+  if (!formMode) {
     setHidden("#formPreviewCard", true);
     setHidden("#formResultCard", true);
+  }
+  if (!compareMode) {
+    setHidden("#compareRunCard", true);
+    setHidden("#compareResultCard", true);
   }
 }
 
