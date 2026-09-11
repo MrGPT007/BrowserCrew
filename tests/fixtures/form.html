@@ -1,1 +1,41 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><title>BrowserCrew Form Fixture</title></head><body><main><h1>Business inquiry fixture</h1><form><label>Name <input name="name"></label><label>Email <input name="email" type="email"></label><label>Message <textarea name="message"></textarea></label><button type="submit">Send inquiry</button></form><p>This fixture is reserved for the next controlled-write slice. Submission must require a scoped grant.</p></main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BrowserCrew Form Fixture</title>
+  <style>
+    body{font:16px/1.5 system-ui,sans-serif;max-width:44rem;margin:3rem auto;padding:0 1rem}form{display:grid;gap:1rem}label{display:grid;gap:.3rem;font-weight:700}input,textarea,select,button{font:inherit;padding:.7rem}textarea{min-height:8rem}output{display:block;margin-top:1rem;padding:.8rem;border:2px solid #222}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Business inquiry fixture</h1>
+    <p>Use this controlled page to test previewed form filling. BrowserCrew must never submit it automatically.</p>
+    <form id="inquiryForm">
+      <label for="name">Full name <input id="name" name="name" autocomplete="name" required></label>
+      <label for="email">Email address <input id="email" name="email" type="email" autocomplete="email" required></label>
+      <label for="topic">Reason for contacting us
+        <select id="topic" name="topic">
+          <option value="pricing">Pricing</option>
+          <option value="support">Support</option>
+          <option value="partnership">Partnership</option>
+        </select>
+      </label>
+      <label for="message">Message <textarea id="message" name="message" required></textarea></label>
+      <button type="submit">Send inquiry</button>
+    </form>
+    <output id="fixtureStatus" aria-live="polite">Not submitted</output>
+  </main>
+  <script>
+    window.__browserCrewFixture = { inputEvents: 0, changeEvents: 0, submits: 0 };
+    document.addEventListener('input', () => { window.__browserCrewFixture.inputEvents += 1; });
+    document.addEventListener('change', () => { window.__browserCrewFixture.changeEvents += 1; });
+    document.querySelector('#inquiryForm').addEventListener('submit', (event) => {
+      event.preventDefault();
+      window.__browserCrewFixture.submits += 1;
+      document.querySelector('#fixtureStatus').textContent = `Submitted ${window.__browserCrewFixture.submits} time(s)`;
+    });
+  </script>
+</body>
+</html>
