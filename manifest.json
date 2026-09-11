@@ -9,7 +9,7 @@
     "http://*/*"
   ],
   "background": {
-    "service_worker": "src/background.js",
+    "service_worker": "src/service-worker.js",
     "type": "module"
   },
   "action": {
