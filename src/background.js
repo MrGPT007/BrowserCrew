@@ -1,7 +1,40 @@
 const STORAGE_KEY = "browsercrew.tasks.v1";
 const SETTINGS_KEY = "browsercrew.settings.v1";
 const SESSION_KEY = "browsercrew.providerSecret.v1";
+const SKILLS_KEY = "browsercrew.skills.v1";
 const MAX_PAGE_CHARS = 18000;
+const MAX_SKILLS = 50;
+
+const TOOL_CATALOG = Object.freeze([
+  {
+    id: "page.read",
+    name: "Read the selected page",
+    summary: "Reads a bounded snapshot of visible text from the exact page you approved.",
+    access: "Read only",
+    status: "available"
+  },
+  {
+    id: "evidence.verify",
+    name: "Check extracted values",
+    summary: "Compares extracted values with the captured page text before BrowserCrew marks a job complete.",
+    access: "Local check",
+    status: "available"
+  },
+  {
+    id: "task.pause",
+    name: "Pause a job",
+    summary: "Stops BrowserCrew from starting another step after the current step is reconciled.",
+    access: "Job control",
+    status: "available"
+  },
+  {
+    id: "task.stop",
+    name: "Stop a job",
+    summary: "Cancels future work for the current job and keeps the saved journal for review.",
+    access: "Job control",
+    status: "available"
+  }
+]);
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -29,6 +62,12 @@ async function handleMessage(message) {
     case "PAUSE_TASK": return updateTaskControl(message.taskId, "paused");
     case "STOP_TASK": return updateTaskControl(message.taskId, "cancelled");
     case "GET_TASKS": return { ok: true, tasks: await getTasks() };
+    case "GET_TOOL_CATALOG": return { ok: true, tools: TOOL_CATALOG };
+    case "GET_SKILLS": return { ok: true, skills: await getSkills() };
+    case "SAVE_SKILL": return saveSkill(message.skill);
+    case "DELETE_SKILL": return deleteSkill(message.skillId);
+    case "GET_MEMORY_SUMMARY": return getMemorySummary();
+    case "CLEAR_MEMORY": return clearMemory(message.scope);
     default: return { ok: false, error: { code: "UNKNOWN_MESSAGE", message: "BrowserCrew received an unknown request." } };
   }
 }
@@ -144,11 +183,11 @@ async function observeTab(tabId, expectedUrl) {
 }
 
 async function extractWithModel(settings, secret, goal, observation) {
-  const schemaInstruction = `Return only one JSON object with this shape: {"productName":"string or null","price":"string or null","notes":"short string"}. Do not invent missing values. Use null when the page does not contain a value.`;
+  const schemaInstruction = "Return only one JSON object with this shape: {\"items\":[{\"label\":\"short name\",\"value\":\"exact text copied from the page or null\"}],\"notes\":\"short string\"}. Return at most 8 items. Do not invent missing values. Use null when the page does not contain a requested value.";
   const response = await callOpenAICompatible(settings, secret, [
     { role: "system", content: `You extract facts from browser-page text. ${schemaInstruction}` },
     { role: "user", content: `User job: ${goal}\n\nPage title: ${observation.title}\nPage address: ${observation.url}\n\nPage text:\n${observation.text}` }
-  ], { maxTokens: 350 });
+  ], { maxTokens: 500 });
   const content = response.choices?.[0]?.message?.content;
   if (typeof content !== "string") throw coded("BAD_MODEL_RESPONSE", "The AI answered in a format BrowserCrew could not read.");
   return { data: parseJsonObject(content), model: response.model || settings.model, usage: response.usage || null };
@@ -164,7 +203,7 @@ async function callOpenAICompatible(settings, secret, messages, options = {}) {
   try {
     response = await fetch(endpoint, {
       method: "POST", headers, signal: controller.signal,
-      body: JSON.stringify({ model: settings.model, messages, temperature: 0, max_tokens: options.maxTokens || 350 })
+      body: JSON.stringify({ model: settings.model, messages, temperature: 0, max_tokens: options.maxTokens || 500 })
     });
   } catch (error) {
     if (error?.name === "AbortError") throw coded("PROVIDER_TIMEOUT", "The AI service did not answer within 30 seconds.");
@@ -182,21 +221,37 @@ async function callOpenAICompatible(settings, secret, messages, options = {}) {
 }
 
 function verifyExtraction(data, observation) {
-  const values = {
-    productName: cleanNullable(data.productName),
-    price: cleanNullable(data.price),
-    notes: cleanNullable(data.notes) || "No extra notes."
-  };
+  const rawItems = Array.isArray(data?.items) ? data.items : [
+    { label: "Product", value: data?.productName ?? null },
+    { label: "Price", value: data?.price ?? null }
+  ];
+  const items = rawItems.slice(0, 8).map((item, index) => ({
+    label: cleanNullable(item?.label) || `Result ${index + 1}`,
+    value: cleanNullable(item?.value)
+  }));
+  const notes = cleanNullable(data?.notes) || "No extra notes.";
   const page = observation.text.toLowerCase();
-  const checks = [];
-  for (const [key, value] of Object.entries({ productName: values.productName, price: values.price })) {
-    if (!value) { checks.push(`${key} was not found and was left empty.`); continue; }
-    const normalized = value.toLowerCase().replace(/\s+/g, " ").trim();
+  const verification = [];
+  let exactMatches = 0;
+
+  for (const item of items) {
+    if (!item.value) {
+      verification.push(`${item.label} was not found and was left empty.`);
+      continue;
+    }
+    const normalized = item.value.toLowerCase().replace(/\s+/g, " ").trim();
     const exact = page.includes(normalized);
-    checks.push(exact ? `${key} appears in the captured page text.` : `${key} came from the AI answer but could not be matched exactly in the captured text.`);
+    if (exact) exactMatches += 1;
+    verification.push(exact ? `${item.label} appears in the captured page text.` : `${item.label} came from the AI answer but could not be matched exactly in the captured text.`);
   }
-  if (!values.productName && !values.price) throw coded("NOT_VERIFIED", "The AI did not find either requested value, so BrowserCrew will not mark the job complete.");
-  return { values, verification: checks };
+
+  const presentItems = items.filter((item) => item.value);
+  if (!presentItems.length) throw coded("NOT_VERIFIED", "The AI did not find any requested values, so BrowserCrew will not mark the job complete.");
+  if (!exactMatches) throw coded("NOT_VERIFIED", "BrowserCrew could not match any extracted value to the captured page text, so the job was not marked complete.");
+
+  const productName = items.find((item) => /product|name|heading/i.test(item.label) && item.value)?.value || null;
+  const price = items.find((item) => /price|cost|amount/i.test(item.label) && item.value)?.value || null;
+  return { values: { items, productName, price, notes }, verification };
 }
 
 function parseJsonObject(text) {
@@ -261,4 +316,65 @@ async function reconcileInterruptedTasks() {
     }
   }
   if (changed) await chrome.storage.local.set({ [STORAGE_KEY]: tasks });
+}
+
+async function getSkills() {
+  const data = await chrome.storage.local.get(SKILLS_KEY);
+  return Array.isArray(data[SKILLS_KEY]) ? data[SKILLS_KEY] : [];
+}
+
+async function saveSkill(input = {}) {
+  const name = String(input.name || "").trim();
+  const goal = String(input.goal || "").trim();
+  if (!name) throw coded("SKILL_NAME_REQUIRED", "Give this reusable job a short name.");
+  if (name.length > 80) throw coded("SKILL_NAME_TOO_LONG", "Keep the reusable job name under 80 characters.");
+  if (!goal) throw coded("SKILL_GOAL_REQUIRED", "Add the instructions BrowserCrew should reuse.");
+  if (goal.length > 1500) throw coded("SKILL_GOAL_TOO_LONG", "Keep reusable job instructions under 1,500 characters.");
+
+  const skills = await getSkills();
+  if (skills.length >= MAX_SKILLS) throw coded("SKILL_LIMIT", `BrowserCrew can keep up to ${MAX_SKILLS} reusable jobs in this build.`);
+  const now = new Date().toISOString();
+  const skill = {
+    id: crypto.randomUUID(), schemaVersion: 1, name, goal,
+    mode: "read_only", createdAt: now, updatedAt: now
+  };
+  skills.unshift(skill);
+  await chrome.storage.local.set({ [SKILLS_KEY]: skills });
+  return { ok: true, skill, skills };
+}
+
+async function deleteSkill(skillId) {
+  if (!skillId) throw coded("SKILL_ID_REQUIRED", "Choose the reusable job you want to delete.");
+  const skills = await getSkills();
+  const next = skills.filter((skill) => skill.id !== skillId);
+  if (next.length === skills.length) throw coded("SKILL_NOT_FOUND", "That reusable job could not be found.");
+  await chrome.storage.local.set({ [SKILLS_KEY]: next });
+  return { ok: true, skills: next };
+}
+
+async function getMemorySummary() {
+  const [tasks, skills, settingsResponse] = await Promise.all([getTasks(), getSkills(), getSettings()]);
+  return {
+    ok: true,
+    summary: {
+      taskCount: tasks.length,
+      skillCount: skills.length,
+      provider: settingsResponse.settings,
+      hasSecret: settingsResponse.hasSecret
+    }
+  };
+}
+
+async function clearMemory(scope) {
+  if (scope === "tasks") {
+    await chrome.storage.local.remove(STORAGE_KEY);
+  } else if (scope === "skills") {
+    await chrome.storage.local.remove(SKILLS_KEY);
+  } else if (scope === "ai") {
+    await chrome.storage.local.remove(SETTINGS_KEY);
+    await chrome.storage.session.remove(SESSION_KEY);
+  } else {
+    throw coded("UNKNOWN_MEMORY_SCOPE", "Choose which saved information you want BrowserCrew to forget.");
+  }
+  return getMemorySummary();
 }
