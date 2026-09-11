@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Northstar Office invoice portal</title>
+  <style>
+    body{font:16px/1.5 system-ui,sans-serif;max-width:54rem;margin:3rem auto;padding:0 1rem}table{width:100%;border-collapse:collapse}th,td{padding:.75rem;border:1px solid #333;text-align:left}a{font-weight:700}
+  </style>
+</head>
+<body>
+  <main data-browsercrew-invoice-portal data-account-id="ACCT-7788" data-account-label="Northstar Office LLC">
+    <h1>Invoices</h1>
+    <p><strong>Account:</strong> Northstar Office LLC · ACCT-7788</p>
+    <p>This controlled portal lets BrowserCrew prove that it downloads only explicitly selected invoice PDFs and verifies each completed browser download.</p>
+
+    <table>
+      <thead><tr><th>Invoice</th><th>Date</th><th>Amount</th><th>PDF</th></tr></thead>
+      <tbody>
+        <tr data-browsercrew-invoice data-invoice-id="INV-2026-001" data-invoice-label="Invoice INV-2026-001" data-invoice-date="2026-06-30" data-invoice-amount="$1,240.00">
+          <td>INV-2026-001</td><td>June 30, 2026</td><td>$1,240.00</td><td><a data-browsercrew-invoice-download href="/invoices/INV-2026-001.pdf">Download PDF</a></td>
+        </tr>
+        <tr data-browsercrew-invoice data-invoice-id="INV-2026-002" data-invoice-label="Invoice INV-2026-002" data-invoice-date="2026-07-31" data-invoice-amount="$980.50">
+          <td>INV-2026-002</td><td>July 31, 2026</td><td>$980.50</td><td><a data-browsercrew-invoice-download href="/invoices/INV-2026-002.pdf">Download PDF</a></td>
+        </tr>
+        <tr data-browsercrew-invoice data-invoice-id="INV-2026-003" data-invoice-label="Invoice INV-2026-003" data-invoice-date="2026-08-31" data-invoice-amount="$2,115.75">
+          <td>INV-2026-003</td><td>August 31, 2026</td><td>$2,115.75</td><td><a data-browsercrew-invoice-download href="/invoices/INV-2026-003.pdf">Download PDF</a></td>
+        </tr>
+        <tr data-browsercrew-invoice data-invoice-id="INV-2026-004" data-invoice-label="Invoice INV-2026-004" data-invoice-date="2026-09-10" data-invoice-amount="$640.00">
+          <td>INV-2026-004</td><td>September 10, 2026</td><td>$640.00</td><td><a data-browsercrew-invoice-download href="/invoices/INV-2026-004.pdf">Download PDF</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+  <script>
+    if (new URL(location.href).searchParams.get('crash') === '1') {
+      const row = document.querySelector('[data-invoice-id="INV-2026-004"]');
+      row?.querySelector('[data-browsercrew-invoice-download]')?.setAttribute('href', '/invoices/INV-2026-004.pdf?slow=1');
+    }
+  </script>
+</body>
+</html>
