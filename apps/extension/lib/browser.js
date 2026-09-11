@@ -73,6 +73,7 @@ async function check(task, tabId) {
 export async function read(task, tabId) {
   await check(task, tabId);
   const id = uid();
+  if (task.status !== 'running') throw new Error('The task stopped before reading this page.');
   const results = await chrome.scripting.executeScript({ target: { tabId }, world: 'ISOLATED', func: pageOperation, args: [{ kind: 'read', id }] });
   const first = results[0];
   if (!first?.result || !first.documentId) throw new Error('This page cannot be read. Open a normal web page and try again.');
@@ -84,6 +85,7 @@ export async function fill(task, action) {
   const tab = await check(task, observation.tabId);
   if (!tab.active) throw new Error('Return to the chosen form tab before approving. No new fields were filled.');
   if (tab.url !== observation.url) throw new Error('The form address changed after review. Read the page again.');
+  if (task.status !== 'running') throw new Error('The task stopped before changing this page.');
   const results = await chrome.scripting.executeScript({ target: { tabId: observation.tabId, documentIds: [observation.documentId] }, world: 'ISOLATED', func: pageOperation, args: [{ kind: 'fill', observationId: observation.id, fields: action.fields }] });
   if (!results[0]?.result?.verified) throw new Error('The form outcome could not be checked. Inspect the page before continuing.');
   return results[0].result;

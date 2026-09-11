@@ -11,3 +11,9 @@ Environment incident: the authoring container disconnected during implementation
 Next acceptance action: load the CI-built extension on Windows, connect one real cloud model and one local model, run the same five-page comparison and reviewed form fixture, record exact model/server/browser versions and failures. This requires real credentials and running model services; scripted responses are not substitutes.
 
 Repository hygiene follow-up: restore the exact original attached documents when workspace access returns; retain the implementation maps separately.
+
+## Initial CI evidence
+
+Commit 590a5c340aa522f3c36250175511a370ae043fe6 passed [run 34626763972](https://github.com/MrGPT007/BrowserCrew/actions/runs/34626763972): dependency install, syntax/permission checks, 13 unit tests, deterministic packaged-extension browser tests and ZIP packaging. Browser: Playwright Chromium 140.0.7339.186 on Ubuntu. This is not current-stable Chrome certification.
+
+The follow-up change adds a cancellation check immediately before DOM dispatch (including after asynchronous permission checks), blocks obvious credential-bearing URLs, and reconciles all durable in-flight intents. Exact follow-up CI evidence is attached to the PR; no local execution is claimed.

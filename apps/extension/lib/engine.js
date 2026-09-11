@@ -12,7 +12,8 @@ export class Engine {
       if (Date.now() - Date.parse(task.createdAt) > 30 * 86400000) {
         await this.store.remove(task.id); this.tasks = this.tasks.filter(t => t.id !== task.id); continue;
       }
-      if (task.status === 'running' || task.status === 'awaiting_approval') {
+      const uncertain = task.actions.some(a => a.status === 'intent');
+      if (uncertain || task.status === 'running' || task.status === 'awaiting_approval') {
         for (const action of task.actions) if (action.status === 'intent') action.status = 'outcome_unknown';
         task.status = task.actions.some(a => a.status === 'outcome_unknown') ? 'recovering' : 'paused';
         task.pending = null;

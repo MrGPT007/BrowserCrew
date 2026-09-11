@@ -44,3 +44,7 @@ test('provider redirects are rejected and errors never echo server bodies or cre
   const controller = new AbortController(); controller.abort();
   await assert.rejects(generate({baseUrl:'http://127.0.0.1:1234/v1',model:'m'}, '', {...task,goal:'read'}, controller.signal, async()=>{throw new Error('SECRET');}), /stopped/);
 });
+
+test('URLs containing authentication secrets are rejected before disclosure', () => {
+  assert.throws(() => scoped(task, 1, 'https://example.com?access_token=seeded-secret'), /secret details/);
+});

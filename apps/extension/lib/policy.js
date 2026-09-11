@@ -2,6 +2,7 @@ import { record, text } from './contracts.js';
 export function pageUrl(value) {
   const u = new URL(value);
   if (!['https:', 'http:'].includes(u.protocol) || u.username || u.password) throw new Error('Choose a normal web page. Browser settings and private browser pages cannot be used.');
+  if ([...u.searchParams.keys()].some(key => /^(access_token|refresh_token|id_token|token|password|secret|api_key|apikey|authorization)$/i.test(key))) throw new Error('This address contains sign-in or secret details. Open a page with a clean address before using it.');
   return u;
 }
 export function providerConfig(value) {
