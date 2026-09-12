@@ -2,25 +2,27 @@ import { assertSkillExecutable, promoteSkillDraft, validateSkill } from "./skill
 
 const SKILL_LIBRARY_KEY = "browsercrew.skillLibrary.v1";
 const LEGACY_SKILLS_KEY = "browsercrew.skills.v1";
+const SKILLS_PORT = "browsercrew-skills";
 const MAX_SKILLS = 100;
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!message?.type?.startsWith("SKILL_LIBRARY_")) return false;
-  handleSkillMessage(message).then(sendResponse).catch((error) => {
-    sendResponse({ ok: false, error: { code: error?.code || "SKILL_LIBRARY_ERROR", message: error?.message || "BrowserCrew could not update this skill." } });
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== SKILLS_PORT) return;
+  port.onMessage.addListener((message) => {
+    handleSkillMessage(message).then((result) => port.postMessage({ requestId: message?.requestId, ...result })).catch((error) => {
+      port.postMessage({ requestId: message?.requestId, ok: false, error: { code: error?.code || "SKILL_LIBRARY_ERROR", message: error?.message || "BrowserCrew could not update this skill." } });
+    });
   });
-  return true;
 });
 
 async function handleSkillMessage(message) {
-  switch (message.type) {
-    case "SKILL_LIBRARY_LIST": return { ok: true, skills: await listSkillVersions() };
-    case "SKILL_LIBRARY_SAVE_DRAFT": return saveSkillDraft(message.skill);
-    case "SKILL_LIBRARY_APPROVE": return approveSkillVersion(message.skillId, message.version);
-    case "SKILL_LIBRARY_ARCHIVE": return archiveSkillVersion(message.skillId, message.version);
-    case "SKILL_LIBRARY_DELETE_DRAFT": return deleteDraft(message.skillId, message.version);
-    case "SKILL_LIBRARY_GET": return getSkillVersion(message.skillId, message.version);
-    case "SKILL_LIBRARY_MIGRATE_LEGACY": return migrateLegacySkills();
+  switch (message?.type) {
+    case "list": return { ok: true, skills: await listSkillVersions() };
+    case "saveDraft": return saveSkillDraft(message.skill);
+    case "approve": return approveSkillVersion(message.skillId, message.version);
+    case "archive": return archiveSkillVersion(message.skillId, message.version);
+    case "deleteDraft": return deleteDraft(message.skillId, message.version);
+    case "get": return getSkillVersion(message.skillId, message.version);
+    case "migrateLegacy": return migrateLegacySkills();
     default: return { ok: false, error: { code: "UNKNOWN_SKILL_REQUEST", message: "BrowserCrew received an unknown skill request." } };
   }
 }
