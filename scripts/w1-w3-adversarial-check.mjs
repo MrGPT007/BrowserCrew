@@ -29,10 +29,11 @@ for (const phrase of [
   "current.url !== selected.url",
   "COMPARE_TAB_CHANGED",
   "UNTRUSTED PAGE DATA START",
-  "candidateBoundToCriterion",
-  "Verified against captured page text near the requested criterion"
+  "could not match it to the captured page text",
+  "Verified against captured page text."
 ]) if (!compareRead.includes(phrase)) throw new Error(`W1 runtime hardening missing: ${phrase}`);
 if (compareRead.includes("const tabIds = Array.isArray(payload?.tabIds)")) throw new Error("W1 runtime must not reconstruct authorization from current tab IDs alone.");
+if (compareRead.includes("candidateBoundToCriterion")) throw new Error("W1 source verification must not rely on layout/proximity heuristics that reject valid page facts.");
 
 const formWrite = await readFile("src/form-write.js", "utf8");
 for (const phrase of [
@@ -55,7 +56,9 @@ for (const phrase of [
   "PROVIDER_ERROR",
   "rejectedUngrounded",
   "FORM_CHANGED",
-  "submits, 0"
+  "submits, 0",
+  'title === "Hostile Supplier" ? "$0.01"',
+  '!hostilePrompt?.user?.includes("$0.01")'
 ]) if (!smoke.includes(phrase)) throw new Error(`Adversarial smoke contract missing: ${phrase}`);
 
 const releaseMatrix = await readFile("scripts/release-matrix-smoke.mjs", "utf8");
