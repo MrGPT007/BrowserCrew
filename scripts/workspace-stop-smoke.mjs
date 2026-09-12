@@ -78,7 +78,7 @@ try {
   await panel.getByRole("tab", { name: "History" }).click();
   await waitForText(panel.locator("#historyList"), stopGoal);
   const historyText = await panel.locator("#historyList").innerText();
-  assert.match(historyText, /Stopped/i);
+  assert.match(historyText, /Cancelled/i);
   assert.match(historyText, /Paused/i);
   pass("Cancelled and paused Workspace tasks remained inspectable in History");
 
