@@ -253,7 +253,7 @@ async function executeMcpChatRequest({ input, init, body, grant, conversation })
 }
 
 async function stageWriteApproval(conversationId, server, tool, args, requested, model) {
-  const digest = await sha256Hex(JSON.stringify(args));
+  const digest = await sha256Hex(canonicalJson(args));
   const now = new Date().toISOString();
   const action = {
     id: crypto.randomUUID(), schemaVersion: 1, kind: "mcp_write", conversationId, serverId: server.id, toolName: tool.name,
@@ -273,7 +273,7 @@ async function approveMcpWrite(actionId) {
   if (!action || action.status !== "awaiting_approval" || action.checkpoint !== "mcp_write_preview") throw coded("MCP_WRITE_NOT_APPROVABLE", "That external change is no longer waiting for approval.");
   const pending = (await chrome.storage.session.get(PENDING_WRITE_KEY))[PENDING_WRITE_KEY];
   if (!pending || pending.actionId !== actionId) throw coded("MCP_WRITE_DETAILS_GONE", "The private tool arguments are no longer available in this Chrome session. Ask the AI to prepare the change again.");
-  const digest = await sha256Hex(JSON.stringify(pending.arguments || {}));
+  const digest = await sha256Hex(canonicalJson(pending.arguments || {}));
   if (digest !== action.argumentDigest) throw coded("MCP_WRITE_CHANGED", "The external tool arguments changed after preview, so BrowserCrew refused the write.");
   const servers = await getServers();
   const server = servers.find((item) => item.id === action.serverId);
@@ -297,7 +297,7 @@ async function approveMcpWrite(actionId) {
     action.resultSummary = safeResultSummary(result.text);
     await saveActions(actions);
     await chrome.storage.session.remove(PENDING_WRITE_KEY);
-    await addChatActivity(action.conversationId, "tool.completed", result.isError ? `The approved external tool reported an error.` : `The approved external change finished.`, { source: "mcp", actionId, serverName: server.name, tool: tool.name, isError: result.isError, characters: result.text.length });
+    await addChatActivity(action.conversationId, "tool.completed", result.isError ? "The approved external tool reported an error." : "The approved external change finished.", { source: "mcp", actionId, serverName: server.name, tool: tool.name, isError: result.isError, characters: result.text.length });
     await addChatActivity(action.conversationId, "verification", result.isError ? "The server reported the tool error; BrowserCrew did not retry the write." : "Recorded the completed external write and consumed its one-time approval.", { source: "mcp", actionId, tool: tool.name, noReplay: true });
     const payload = { type: "MCP_WRITE_DONE", ok: !result.isError, action: publicAction(action), result: result.text };
     broadcastMcp(payload);
@@ -587,6 +587,13 @@ function withSecretFlag(server, secrets) { return { ...server, hasSecret: Boolea
 function publicAction(action) { const { argumentDigest, ...safe } = action; return { ...safe, hasArgumentDigest: Boolean(argumentDigest) }; }
 function safeResultSummary(text) { return String(text || "").replace(/\s+/g, " ").trim().slice(0, 500); }
 function safeJson(value) { try { return JSON.stringify(value, null, 2).slice(0, MAX_RESULT_CHARS); } catch { return "[unreadable structured result]"; } }
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
 function sanitizeMeta(meta) { if (!meta || typeof meta !== "object") return null; const safe = {}; for (const [key, value] of Object.entries(meta)) { if (/secret|token|authorization|cookie|prompt|content|text/i.test(key)) continue; if (value === null || ["string", "number", "boolean"].includes(typeof value)) safe[key] = typeof value === "string" ? value.slice(0, 500) : value; } return safe; }
 async function sha256Hex(text) { const bytes = new TextEncoder().encode(String(text)); const digest = await crypto.subtle.digest("SHA-256", bytes); return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join(""); }
 function broadcastMcp(message) { for (const port of mcpPorts) safePost(port, message); }
