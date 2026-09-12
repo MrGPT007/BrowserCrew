@@ -25,7 +25,9 @@ for (const contract of [
 }
 
 const background = await readFile("src/background.js", "utf8");
-if (!background.includes("input[type='password']")) throw new Error("Selected-page observation must exclude password inputs before building model context.");
+if (!background.includes("document.body?.innerText")) throw new Error("Selected-page observation must use the live rendered-text view before building model context.");
+if (background.includes("cloneNode(true)")) throw new Error("Selected-page observation must not use a detached DOM clone that can expose hidden text.");
+if (!background.includes("safeProviderErrorMessage")) throw new Error("Provider failures must use a redacted BrowserCrew-owned error message instead of persisting arbitrary provider error text.");
 
 const formWrite = await readFile("src/form-write.js", "utf8");
 if (!formWrite.includes('new Set(["text", "email", "tel", "url", "search", "number"])')) {
