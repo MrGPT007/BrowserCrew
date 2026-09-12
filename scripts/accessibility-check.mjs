@@ -26,7 +26,7 @@ for (const contract of [
   'Home',
   'End',
   '[role="dialog"][aria-modal="true"]',
-  'event.key === "Tab"',
+  'trapModalTab(event, dialog)',
   'event.key === "Escape"',
   'app.inert = visible.size > 0',
   'returnTarget.focus()'
