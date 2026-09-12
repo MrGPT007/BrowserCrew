@@ -43,8 +43,14 @@ for (const proof of [
   "Pause let the current provider step finish",
   "provider.intent",
   "provider.complete",
-  "TASK_CANCELLED"
+  "TASK_CANCELLED",
+  'task.error?.code === "TASK_PAUSED"'
 ]) if (!smoke.includes(proof)) throw new Error(`REL-01 browser proof missing: ${proof}`);
+
+const settledPausePredicate = 'task.status === "paused"\n    && task.journal.some((entry) => entry.type === "provider.complete")\n    && task.error?.code === "TASK_PAUSED"';
+if (!smoke.includes(settledPausePredicate)) {
+  throw new Error("REL-01 Pause proof must wait for the complete settled invariant before returning the task.");
+}
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
 if (pkg.scripts?.["workspace-stop-check"] !== "node scripts/workspace-stop-check.mjs") throw new Error("workspace-stop-check script is not wired.");

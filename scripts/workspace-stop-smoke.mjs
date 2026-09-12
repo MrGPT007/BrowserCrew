@@ -66,12 +66,15 @@ try {
   await panel.locator("#pauseButton").click({ force: true });
   await waitUntil(() => pauseEntry.completed, 5_000, () => JSON.stringify(provider.snapshot()));
   assert.equal(pauseEntry.aborted, false, "Pause must not abort the current provider request.");
-  const pausedTask = await waitForTask(panel, pauseGoal, (task) => task.status === "paused" && task.journal.some((entry) => entry.type === "provider.complete"));
+  const pausedTask = await waitForTask(panel, pauseGoal, (task) => task.status === "paused"
+    && task.journal.some((entry) => entry.type === "provider.complete")
+    && task.error?.code === "TASK_PAUSED");
   assert.equal(pausedTask.result, null, "Paused task must not continue into final verification/completion.");
   assert.equal(pausedTask.error?.code, "TASK_PAUSED");
   pass("Pause let the current provider step finish, then blocked the next step", {
     status: pausedTask.status,
     checkpoint: pausedTask.checkpoint,
+    error: pausedTask.error,
     provider: provider.snapshot()
   });
 
