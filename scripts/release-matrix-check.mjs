@@ -5,7 +5,8 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const catalogPath = "tests/scenarios/v0.2.json";
 const runnerPath = "scripts/release-matrix-smoke.mjs";
-for (const file of [catalogPath, runnerPath, "docs/RELEASE-EVIDENCE-v0.2.md"]) await access(file);
+const workflowPath = ".github/workflows/quality.yml";
+for (const file of [catalogPath, runnerPath, workflowPath, "docs/RELEASE-EVIDENCE-v0.2.md"]) await access(file);
 await execFileAsync(process.execPath, ["--check", runnerPath]);
 
 const catalog = JSON.parse(await readFile(catalogPath, "utf8"));
@@ -51,6 +52,16 @@ for (const phrase of [
   "exact 40-character candidate commit SHA"
 ]) if (!runner.includes(phrase)) throw new Error(`Release-matrix runner contract missing: ${phrase}`);
 for (const id of ids) if (!runner.includes(`\"${id}\"`)) throw new Error(`Release-matrix runner must explicitly map ${id}.`);
+
+const workflow = await readFile(workflowPath, "utf8");
+for (const phrase of [
+  "release-matrix:",
+  "Run V02-B01 75-attempt release matrix",
+  "npm run release-matrix-smoke",
+  "release-matrix-evidence",
+  "artifacts/release-matrix",
+  "if-no-files-found: error"
+]) if (!workflow.includes(phrase)) throw new Error(`Quality workflow release-matrix gate missing: ${phrase}`);
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
 if (pkg.scripts?.["release-matrix-check"] !== "node scripts/release-matrix-check.mjs") throw new Error("release-matrix-check must stay wired in package.json.");

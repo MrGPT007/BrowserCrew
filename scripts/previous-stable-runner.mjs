@@ -16,6 +16,7 @@ const targets = [
   "package-smoke.mjs",
   "browser-smoke.mjs",
   "w1-w3-adversarial-smoke.mjs",
+  "w2-w4-w5-adversarial-smoke.mjs",
   "directory-smoke.mjs",
   "record-smoke.mjs",
   "invoice-smoke.mjs",

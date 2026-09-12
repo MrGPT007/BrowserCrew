@@ -67,8 +67,8 @@ for (const id of ["W1-03", "W1-04", "W1-05", "W3-02", "W3-03", "W3-05"]) {
   if (!releaseMatrix.includes(marker)) throw new Error(`Release matrix must map ${id} to executable adversarial evidence.`);
 }
 for (const id of ["W2-03", "W2-04", "W4-02", "W4-03", "W4-05", "W5-02", "W5-03", "W5-05"]) {
-  const marker = `\"${id}\": { suite: \"planned\"`;
-  if (!releaseMatrix.includes(marker)) throw new Error(`Release matrix must keep ${id} as a hard planned failure until its executable test exists.`);
+  const marker = `\"${id}\": { suite: \"w2-w4-w5-adversarial\"`;
+  if (!releaseMatrix.includes(marker)) throw new Error(`Release matrix must map ${id} to the final executable adversarial suite.`);
 }
 
 const previousStable = await readFile("scripts/previous-stable-runner.mjs", "utf8");
