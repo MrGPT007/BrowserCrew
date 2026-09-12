@@ -33,6 +33,9 @@ function createWatchCard() {
     </div>
     <div id="watchMeRunning" hidden>
       <div class="selection-summary" id="watchMeStatus" aria-live="polite">Watching this page…</div>
+      <label class="field-label" for="watchMeCompletionText">What text tells you this worked?</label>
+      <input id="watchMeCompletionText" type="text" maxlength="160" placeholder="Example: Ready to review" autocomplete="off" />
+      <p class="helper">At the end, enter a short status or heading you can see on the page. Don’t use a name, email, account number, password, or other private value.</p>
       <div class="button-row">
         <button class="button tactile" id="watchMePauseButton" type="button">Pause watching</button>
         <button class="button button-primary tactile" id="watchMeStopButton" type="button">Stop and review steps</button>
@@ -91,6 +94,8 @@ async function startWatchMe() {
     const response = await portRequest(WATCH_PORT, { type: "start", tab: active.tab });
     if (!response.ok) throw new Error(response.error?.message || "BrowserCrew could not start watching this page.");
     watchState = response.state;
+    const completion = document.querySelector("#watchMeCompletionText");
+    if (completion) completion.value = "";
     renderWatchState();
   } catch (error) {
     announce(error.message || "BrowserCrew could not start Watch me do it.");
@@ -110,13 +115,21 @@ async function toggleWatchPause() {
 
 async function stopWatchMe() {
   const button = document.querySelector("#watchMeStopButton");
-  busy(button, true, "Building your draft…");
+  const completionInput = document.querySelector("#watchMeCompletionText");
+  const completionText = String(completionInput?.value || "").replace(/\s+/g, " ").trim();
+  if (!completionText) {
+    announce("Add a short piece of text that is visible when this job has worked.");
+    completionInput?.focus();
+    return;
+  }
+  busy(button, true, "Checking the result…");
   try {
-    const response = await portRequest(WATCH_PORT, { type: "stop", draft: { title: "My recorded browser job" } });
+    const response = await portRequest(WATCH_PORT, { type: "stop", draft: { title: "My recorded browser job", completionText } });
     if (!response.ok) throw new Error(response.error?.message || "BrowserCrew could not create the draft skill.");
     watchState = response.state;
     renderWatchState();
     showDraftSummary(response.draft);
+    if (completionInput) completionInput.value = "";
     await refreshSkillLibrary();
   } catch (error) {
     announce(error.message || "BrowserCrew could not stop this recording safely.");
@@ -145,6 +158,7 @@ function renderWatchState() {
   const active = ["watching", "paused", "scope_review"].includes(value);
   startRow.hidden = active;
   running.hidden = !active;
+  pauseButton.disabled = false;
   if (!active) {
     badge.textContent = watchState?.draftRef ? "Draft saved" : "Ready";
     return;
@@ -172,8 +186,9 @@ function showDraftSummary(draft) {
   box.hidden = false;
   const inputs = Object.values(draft.inputs || {});
   const secrets = inputs.filter((item) => item.secret).length;
+  const finalCheck = draft.steps?.at(-1)?.expect?.visibleText || "saved result check";
   box.className = "evidence-box";
-  box.innerHTML = `<strong>Draft ready for review</strong><p>${escapeHtml(String(draft.steps?.length || 0))} semantic steps · ${escapeHtml(String(inputs.length))} runtime inputs${secrets ? ` · ${escapeHtml(String(secrets))} private input${secrets === 1 ? "" : "s"}` : ""}.</p><p>Nothing will replay until you approve this exact version.</p>`;
+  box.innerHTML = `<strong>Draft ready for review</strong><p>${escapeHtml(String(draft.steps?.length || 0))} semantic steps · ${escapeHtml(String(inputs.length))} runtime inputs${secrets ? ` · ${escapeHtml(String(secrets))} private input${secrets === 1 ? "" : "s"}` : ""}.</p><p>BrowserCrew will finish only after it can verify: “${escapeHtml(finalCheck)}”. Nothing will replay until you approve this exact version.</p>`;
 }
 
 async function refreshSkillLibrary() {
@@ -200,7 +215,8 @@ function renderSkillLibrary() {
   list.innerHTML = skillVersions.map((skill) => {
     const status = skill.status === "approved" ? "Approved" : skill.status === "archived" ? "Archived" : "Needs review";
     const action = skill.status === "draft" ? `<button class="button button-small button-primary tactile" type="button" data-approve-skill="${escapeAttr(skill.id)}" data-skill-version="${escapeAttr(skill.version)}">Approve this version</button>` : "";
-    return `<article class="skill-card"><div><strong>${escapeHtml(skill.title)}</strong><p>${escapeHtml(skill.description)}</p><small>${escapeHtml(status)} · v${escapeHtml(skill.version)} · ${escapeHtml(String(skill.steps?.length || 0))} steps</small></div><div class="skill-actions">${action}</div></article>`;
+    const finalCheck = skill.steps?.at(-1)?.expect?.visibleText;
+    return `<article class="skill-card"><div><strong>${escapeHtml(skill.title)}</strong><p>${escapeHtml(skill.description)}</p><small>${escapeHtml(status)} · v${escapeHtml(skill.version)} · ${escapeHtml(String(skill.steps?.length || 0))} steps${finalCheck ? ` · checks “${escapeHtml(finalCheck)}”` : ""}</small></div><div class="skill-actions">${action}</div></article>`;
   }).join("");
 }
 
