@@ -1,4 +1,13 @@
-import { alarmName, assertScheduleDispatchable, nextCalendarRun, reconcileAlarmNames, toChromeAlarmSpec, validateSchedule } from "./schedules-contract.js";
+import {
+  alarmName,
+  assertScheduleDispatchable,
+  decideMissedRun,
+  decideScheduleConcurrency,
+  nextCalendarRun,
+  reconcileAlarmNames,
+  toChromeAlarmSpec,
+  validateSchedule
+} from "./schedules-contract.js";
 import { getSkillVersion } from "./skills-runtime.js";
 
 const SCHEDULES_KEY = "browsercrew.schedules.v1";
@@ -108,30 +117,82 @@ async function onAlarm(alarm) {
   if (!schedule?.enabled) return;
 
   const firedAt = Date.now();
+  const scheduledTime = Number.isFinite(alarm.scheduledTime) ? alarm.scheduledTime : firedAt;
+  const missed = decideMissedRun(schedule, { scheduledTime, firedAt });
   const receipt = {
     id: crypto.randomUUID(),
     schemaVersion: 1,
     scheduleId,
     skillRef: schedule.skillRef,
+    scheduledFor: new Date(scheduledTime).toISOString(),
     firedAt: new Date(firedAt).toISOString(),
+    latenessMs: missed.latenessMs,
+    missed: missed.missed,
+    missedAction: missed.missed ? missedActionName(schedule, missed.action) : null,
     status: "checking",
     reason: null,
     taskId: null
   };
   await appendRunReceipt(receipt);
 
+  if (missed.action === "skip") {
+    await settleWithoutDispatch(receipt, "skipped", missed.reason);
+    await advanceSchedule(scheduleId, firedAt);
+    return;
+  }
+  if (missed.action === "review") {
+    receipt.reviewRequestedAt = new Date().toISOString();
+    await settleWithoutDispatch(receipt, "needs_review", missed.reason);
+    await advanceSchedule(scheduleId, firedAt);
+    return;
+  }
+
+  const priorRuns = await listScheduleRuns(scheduleId);
+  const activeRun = priorRuns.some((run) => run.id !== receipt.id && ["checking", "running"].includes(run.status));
+  const queuedRun = priorRuns.some((run) => run.id !== receipt.id && run.status === "queued");
+  const concurrency = decideScheduleConcurrency(schedule, { activeRun, queuedRun });
+  if (concurrency.action === "skip") {
+    await settleWithoutDispatch(receipt, "skipped", concurrency.reason);
+    await advanceSchedule(scheduleId, firedAt);
+    return;
+  }
+  if (concurrency.action === "queue") {
+    receipt.status = "queued";
+    receipt.reason = concurrency.reason;
+    receipt.queuedAt = new Date().toISOString();
+    await updateRunReceipt(receipt);
+    await advanceSchedule(scheduleId, firedAt);
+    return;
+  }
+
+  try {
+    await dispatchReceipt(schedule, receipt);
+  } finally {
+    await advanceSchedule(scheduleId, firedAt);
+    await drainQueuedRun(scheduleId);
+  }
+}
+
+async function dispatchReceipt(schedule, receipt) {
   try {
     const skillResult = await getSkillVersion(schedule.skillRef.id, schedule.skillRef.version);
     if (!skillResult.ok) throw coded("SCHEDULE_SKILL_NOT_FOUND", "The exact skill version for this schedule is no longer available.");
 
-    const priorRuns = await listScheduleRuns(scheduleId);
-    const activeRun = priorRuns.some((run) => run.id !== receipt.id && ["checking", "running"].includes(run.status));
-    const context = await resolveDispatchContext(schedule, skillResult.skill, activeRun);
+    const context = await resolveDispatchContext(schedule, skillResult.skill, false);
     assertScheduleDispatchable(schedule, skillResult.skill, context);
 
     receipt.status = "running";
+    receipt.reason = null;
+    receipt.startedAt = new Date().toISOString();
     await updateRunReceipt(receipt);
-    const result = await dispatchScheduledRun({ schedule, skill: skillResult.skill, firedAt: receipt.firedAt });
+
+    const result = await dispatchScheduledRun({
+      schedule,
+      skill: skillResult.skill,
+      firedAt: receipt.firedAt,
+      scheduledFor: receipt.scheduledFor,
+      scheduleRunId: receipt.id
+    });
     receipt.status = result?.ok ? "completed" : "failed";
     receipt.taskId = result?.taskId || result?.task?.id || null;
     receipt.reason = result?.ok ? null : result?.error?.code || "TASK_FAILED";
@@ -142,9 +203,46 @@ async function onAlarm(alarm) {
     receipt.reason = error?.code || "SCHEDULE_BLOCKED";
     receipt.completedAt = new Date().toISOString();
     await updateRunReceipt(receipt);
-  } finally {
-    await advanceSchedule(scheduleId, firedAt);
   }
+}
+
+async function drainQueuedRun(scheduleId) {
+  const runs = await listScheduleRuns(scheduleId);
+  const queued = runs
+    .filter((run) => run.status === "queued")
+    .sort((a, b) => Date.parse(a.queuedAt || a.firedAt) - Date.parse(b.queuedAt || b.firedAt));
+  if (!queued.length) return;
+
+  const stillActive = runs.some((run) => ["checking", "running"].includes(run.status));
+  if (stillActive) return;
+
+  const schedules = await listSchedules();
+  const schedule = schedules.find((item) => item.id === scheduleId);
+  const receipt = queued[0];
+  if (!schedule) {
+    await settleWithoutDispatch(receipt, "blocked", "SCHEDULE_NOT_FOUND");
+    return;
+  }
+  if (!schedule.enabled && schedule.recurrence.kind !== "once") {
+    await settleWithoutDispatch(receipt, "blocked", "SCHEDULE_PAUSED");
+    return;
+  }
+
+  receipt.status = "checking";
+  receipt.reason = null;
+  receipt.dequeuedAt = new Date().toISOString();
+  await updateRunReceipt(receipt);
+
+  // A queued occurrence was already accepted while the schedule was enabled.
+  // One-time schedules auto-disable after their alarm is consumed, so permit
+  // only that already-accepted occurrence to finish. Recurring schedules must
+  // still be enabled when the queue drains.
+  const acceptedSchedule = schedule.recurrence.kind === "once" ? { ...schedule, enabled: true } : schedule;
+  await dispatchReceipt(acceptedSchedule, receipt);
+
+  // At most one receipt can be queued at a time, but run another drain check in
+  // case a new alarm arrived while this queued occurrence was executing.
+  await drainQueuedRun(scheduleId);
 }
 
 async function resolveDispatchContext(schedule, skill, activeRun) {
@@ -162,6 +260,13 @@ async function resolveDispatchContext(schedule, skill, activeRun) {
     providerAvailable: result?.providerAvailable === true,
     resourceFresh: result?.resourceFresh === true
   };
+}
+
+async function settleWithoutDispatch(receipt, status, reason) {
+  receipt.status = status;
+  receipt.reason = reason;
+  receipt.completedAt = new Date().toISOString();
+  await updateRunReceipt(receipt);
 }
 
 async function advanceSchedule(scheduleId, firedAt) {
@@ -189,6 +294,12 @@ function nextRun(schedule, now = Date.now()) {
   return nextCalendarRun(schedule, now);
 }
 
+function missedActionName(schedule, action) {
+  if (action === "review") return "ask";
+  if (action === "skip") return "skip";
+  return schedule.missedRunPolicy === "run_once_when_available" ? "run_once_when_available" : "run";
+}
+
 async function appendRunReceipt(receipt) {
   const runs = await listScheduleRuns();
   runs.unshift(receipt);
@@ -208,7 +319,7 @@ async function persistSchedules(schedules) {
 }
 
 function shouldSkip(error) {
-  return ["SCHEDULE_ALREADY_RUNNING", "SCHEDULE_MISSED_SKIP"].includes(error?.code);
+  return ["SCHEDULE_ALREADY_RUNNING", "SCHEDULE_MISSED_SKIP", "SCHEDULE_QUEUE_FULL"].includes(error?.code);
 }
 
 function requireAlarmsApi() {
