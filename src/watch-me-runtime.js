@@ -69,8 +69,26 @@ export async function finishWatching(draftInput = {}) {
   const state = await requireWatchState();
   let session = state.session;
   if (!["watching", "paused", "scope_review"].includes(session.status)) throw coded("WATCH_NOT_ACTIVE", "There is no active demonstration to stop.");
-  session = stopWatchSession({ ...session, status: "watching" }, new Date().toISOString());
-  await uninstallPageRecorder(session.approvedTabs[0]).catch(() => {});
+
+  const completionText = String(draftInput.completionText || "").replace(/\s+/g, " ").trim().slice(0, 160);
+  if (!completionText) throw coded("WATCH_COMPLETION_REQUIRED", "Add a short piece of text that is visible when this job has worked.");
+  const tabId = session.approvedTabs[0];
+  const expectedOrigin = session.approvedOrigins[0];
+  const completion = await verifyCompletionText(tabId, expectedOrigin, completionText);
+  if (!completion.visible) throw coded("WATCH_COMPLETION_NOT_VISIBLE", "That success text is not visible on the watched page right now. Finish the job first, then choose text that proves it worked.");
+
+  session = { ...session, status: "watching" };
+  session = recordWatchEvent(session, {
+    id: `step-${String(session.events.length + 1).padStart(3, "0")}`,
+    kind: "verify",
+    tabId,
+    origin: expectedOrigin,
+    pageUrl: completion.url,
+    occurredAt: new Date().toISOString(),
+    expect: { visibleText: completionText }
+  });
+  session = stopWatchSession(session, new Date().toISOString());
+  await uninstallPageRecorder(tabId).catch(() => {});
 
   const draft = draftSkillFromWatchSession(session, {
     skillId: normalizeSkillId(draftInput.skillId || draftInput.title || "watched-workflow"),
@@ -145,6 +163,20 @@ async function resumeWatching() {
   await persistWatchState(next);
   await installPageRecorder(tabId);
   return { ok: true, state: next };
+}
+
+async function verifyCompletionText(tabId, expectedOrigin, completionText) {
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab?.url || new URL(tab.url).origin !== expectedOrigin) throw coded("WATCH_SCOPE_CHANGED", "The watched tab is no longer on the approved website. Start a new recording or review the new scope first.");
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (expected) => {
+      const visibleText = String(document.body?.innerText || "").replace(/\s+/g, " ").trim();
+      return { visible: visibleText.includes(expected), url: location.href };
+    },
+    args: [completionText]
+  });
+  return { visible: result?.visible === true, url: result?.url || tab.url };
 }
 
 async function installPageRecorder(tabId) {
