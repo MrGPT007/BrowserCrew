@@ -56,12 +56,17 @@ jobs:
         run: npm run c5-smoke
       - name: Run REL-01 Workspace Stop and Pause smoke test
         run: npm run workspace-stop-smoke
-      - name: Upload browser and package evidence
+      - name: Upload browser smoke evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: browser-smoke-evidence
-          path: |
-            artifacts
-            dist
+          path: artifacts
+          if-no-files-found: warn
+      - name: Upload release package evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-package-evidence
+          path: dist
           if-no-files-found: warn
