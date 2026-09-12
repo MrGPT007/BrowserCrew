@@ -321,10 +321,14 @@ function sanitizeMeta(meta) {
 async function getSettings() {
   const stored = await chrome.storage.local.get(SETTINGS_KEY);
   const settings = stored[SETTINGS_KEY] || { kind: "openai", model: "gpt-5.6", baseUrl: "https://api.openai.com/v1" };
+  const kind = ["openai", "anthropic", "lmstudio", "ollama"].includes(settings.kind) ? settings.kind : "openai";
+  const defaults = kind === "anthropic"
+    ? { model: "claude-sonnet-5", baseUrl: "https://api.anthropic.com/v1" }
+    : { model: "gpt-5.6", baseUrl: "https://api.openai.com/v1" };
   return {
-    kind: ["openai", "lmstudio", "ollama"].includes(settings.kind) ? settings.kind : "openai",
-    model: String(settings.model || "gpt-5.6").trim(),
-    baseUrl: String(settings.baseUrl || "https://api.openai.com/v1").replace(/\/$/, "")
+    kind,
+    model: String(settings.model || defaults.model).trim(),
+    baseUrl: String(settings.baseUrl || defaults.baseUrl).replace(/\/$/, "")
   };
 }
 
