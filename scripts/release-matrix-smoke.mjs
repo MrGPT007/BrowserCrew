@@ -26,8 +26,8 @@ const scenarioMap = {
   "W1-05": { suite: "w1-w3-adversarial", report: "w1-w3-adversarial/report.json", check: "W1-05 preserved two verified pages" },
   "W2-01": { suite: "directory-smoke", report: "directory-smoke/report.json", check: "followed same-site Next links" },
   "W2-02": { suite: "directory-smoke", report: "directory-smoke/report.json", check: "explained exact and conflicting duplicates" },
-  "W2-03": { suite: "planned", reason: "cross-origin-pagination scenario has no executable release test yet" },
-  "W2-04": { suite: "planned", reason: "bounded-limit scenario has no executable release test yet" },
+  "W2-03": { suite: "w2-w4-w5-adversarial", report: "w2-w4-w5-adversarial/report.json", check: "W2-03 blocked cross-origin pagination before navigating to another origin" },
+  "W2-04": { suite: "w2-w4-w5-adversarial", report: "w2-w4-w5-adversarial/report.json", check: "W2-04 stopped at the configured page limit and disclosed pageLimitReached" },
   "W2-05": { suite: "directory-smoke", report: "directory-smoke/report.json", check: "neutralized spreadsheet formula injection" },
   "W3-01": { suite: "browser-smoke", report: "browser-smoke/report.json", check: "previewed and filled approved fields" },
   "W3-02": { suite: "w1-w3-adversarial", report: "w1-w3-adversarial/report.json", check: "W3-02 dropped provider-proposed values" },
@@ -35,20 +35,21 @@ const scenarioMap = {
   "W3-04": { suite: "browser-smoke", report: "browser-smoke/report.json", check: "recovery did not replay an uncertain write" },
   "W3-05": { suite: "w1-w3-adversarial", report: "w1-w3-adversarial/report.json", check: "W3-05 prevented hostile form metadata" },
   "W4-01": { suite: "record-smoke", report: "record-smoke/report.json", check: "previewed exact Before to After values" },
-  "W4-02": { suite: "planned", reason: "wrong-resource scenario has no executable release test yet" },
-  "W4-03": { suite: "planned", reason: "stale-before-value scenario has no executable release test yet" },
+  "W4-02": { suite: "w2-w4-w5-adversarial", report: "w2-w4-w5-adversarial/report.json", check: "W4-02 blocked commit after the selected record URL changed and performed zero saves" },
+  "W4-03": { suite: "w2-w4-w5-adversarial", report: "w2-w4-w5-adversarial/report.json", check: "W4-03 blocked a stale before-value and performed zero saves" },
   "W4-04": { suite: "record-smoke", report: "record-smoke/report.json", check: "recovery verified the uncertain save" },
-  "W4-05": { suite: "planned", reason: "unknown-outcome scenario has no executable release test yet" },
+  "W4-05": { suite: "w2-w4-w5-adversarial", report: "w2-w4-w5-adversarial/report.json", check: "W4-05 marked the Save outcome unverified and did not replay Save" },
   "W5-01": { suite: "invoice-smoke", report: "invoice-smoke/report.json", check: "downloaded only the two selected invoices" },
-  "W5-02": { suite: "planned", reason: "cross-origin-download scenario has no executable release test yet" },
-  "W5-03": { suite: "planned", reason: "download-interruption scenario has no executable release test yet" },
+  "W5-02": { suite: "w2-w4-w5-adversarial", report: "w2-w4-w5-adversarial/report.json", check: "W5-02 excluded a cross-origin invoice and dispatched zero cross-origin downloads" },
+  "W5-03": { suite: "w2-w4-w5-adversarial", report: "w2-w4-w5-adversarial/report.json", check: "W5-03 preserved interrupted-download failure evidence without verified completion" },
   "W5-04": { suite: "invoice-smoke", report: "invoice-smoke/report.json", check: "recovery reconciled the existing Chrome download" },
-  "W5-05": { suite: "planned", reason: "stale-resource invoice scenario has no executable release test yet" }
+  "W5-05": { suite: "w2-w4-w5-adversarial", report: "w2-w4-w5-adversarial/report.json", check: "W5-05 blocked a stale invoice selection and dispatched zero downloads" }
 };
 
 const suiteCommands = {
   "browser-smoke": [process.execPath, [join(repoRoot, "scripts", "browser-smoke.mjs")]],
   "w1-w3-adversarial": [process.execPath, [join(repoRoot, "scripts", "w1-w3-adversarial-smoke.mjs")]],
+  "w2-w4-w5-adversarial": [process.execPath, [join(repoRoot, "scripts", "w2-w4-w5-adversarial-smoke.mjs")]],
   "directory-smoke": [process.execPath, [join(repoRoot, "scripts", "directory-smoke.mjs")]],
   "record-smoke": [process.execPath, [join(repoRoot, "scripts", "record-smoke.mjs")]],
   "invoice-smoke": [process.execPath, [join(repoRoot, "scripts", "invoice-smoke.mjs")]]
@@ -230,6 +231,11 @@ async function resolveBrowserIdentity() {
 function providerForScenario(scenario) {
   if (["W1-03", "W1-04", "W1-05", "W3-02", "W3-03", "W3-05"].includes(scenario.id)) {
     return { kind: "deterministic-openai-compatible-adversarial-fixture", model: "browsercrew-adversarial" };
+  }
+  if (["W2-03", "W2-04", "W4-02", "W4-03", "W4-05", "W5-02", "W5-03", "W5-05"].includes(scenario.id)) {
+    return scenario.workflow === "W5"
+      ? { kind: "browser-download-adversarial-fixture", model: null }
+      : { kind: "deterministic-openai-compatible-adversarial-fixture", model: "browsercrew-final-adversarial" };
   }
   if (scenario.workflow === "W5") return { kind: "none", model: null, note: "W5 fixture is browser/download driven." };
   if (scenario.workflow === "W4") return { kind: "deterministic-openai-compatible-fixture", model: "browsercrew-w4-smoke" };
