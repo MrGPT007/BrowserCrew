@@ -52,11 +52,9 @@ export function toChromeAlarmSpec(schedule, now = Date.now()) {
     periodInMinutes: recurrence.everyMinutes,
     persistAcrossSessions: true
   };
-  const next = nextCalendarRun(schedule, now);
-  const spec = { when: next, persistAcrossSessions: true };
-  if (recurrence.kind === "daily") spec.periodInMinutes = 24 * 60;
-  if (recurrence.kind === "weekly") spec.periodInMinutes = 7 * 24 * 60;
-  return spec;
+  // Daily/weekly schedules are intentionally one-shot alarms. Recalculate the
+  // next wall-clock run after each fire so DST/time-zone changes cannot drift.
+  return { when: nextCalendarRun(schedule, now), persistAcrossSessions: true };
 }
 
 export function nextCalendarRun(schedule, now = Date.now()) {
@@ -65,8 +63,6 @@ export function nextCalendarRun(schedule, now = Date.now()) {
   if (recurrence.kind === "interval") return recurrence.startAt && recurrence.startAt > now ? recurrence.startAt : now + recurrence.everyMinutes * 60_000;
 
   const parts = zonedParts(now, schedule.timezone);
-  const desiredHour = recurrence.hour;
-  const desiredMinute = recurrence.minute;
   for (let dayOffset = 0; dayOffset <= 8; dayOffset += 1) {
     const date = addUtcDays(parts.year, parts.month, parts.day, dayOffset);
     if (recurrence.kind === "weekly" && date.weekday !== recurrence.weekday) continue;
@@ -74,8 +70,8 @@ export function nextCalendarRun(schedule, now = Date.now()) {
       year: date.year,
       month: date.month,
       day: date.day,
-      hour: desiredHour,
-      minute: desiredMinute
+      hour: recurrence.hour,
+      minute: recurrence.minute
     }, schedule.timezone);
     if (candidate > now) return candidate;
   }
@@ -120,8 +116,7 @@ function zonedParts(epoch, timeZone) {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hourCycle: "h23",
-    weekday: "short"
+    hourCycle: "h23"
   });
   const map = Object.fromEntries(formatter.formatToParts(new Date(epoch)).map((part) => [part.type, part.value]));
   return { year: Number(map.year), month: Number(map.month), day: Number(map.day), hour: Number(map.hour), minute: Number(map.minute), second: Number(map.second) };
