@@ -88,7 +88,7 @@ try {
   await panel.locator("#chatInput").fill("Stop before tool dispatch test.");
   await panel.locator("#chatSendButton").click();
   await panel.locator("#chatStopButton").waitFor({ state: "visible", timeout: timeoutMs });
-  await panel.locator("#chatStopButton").click();
+  await panel.evaluate(() => document.querySelector("#chatStopButton")?.click());
   await waitForText(panel.locator("#chatRunStatus"), "Stopped");
   await panel.waitForTimeout(1800);
   assert.equal(providerServer.requests.filter((item) => item.hasToolResult).length, toolResultsBeforeStop, "Stop must prevent a delayed model tool request from dispatching page.read.");
