@@ -2,6 +2,7 @@ const WATCH_PORT = "browsercrew-watch-control";
 const SKILLS_PORT = "browsercrew-skills";
 let watchState = null;
 let skillVersions = [];
+let watchPollTimer = null;
 
 window.addEventListener("DOMContentLoaded", () => {
   const view = document.querySelector("#view-skills");
@@ -97,6 +98,7 @@ async function startWatchMe() {
     const completion = document.querySelector("#watchMeCompletionText");
     if (completion) completion.value = "";
     renderWatchState();
+    syncWatchPolling();
   } catch (error) {
     announce(error.message || "BrowserCrew could not start Watch me do it.");
   } finally {
@@ -111,6 +113,7 @@ async function toggleWatchPause() {
   if (!response.ok) { announce(response.error?.message || "BrowserCrew could not change the recording state."); return; }
   watchState = response.state;
   renderWatchState();
+  syncWatchPolling();
 }
 
 async function stopWatchMe() {
@@ -128,6 +131,7 @@ async function stopWatchMe() {
     if (!response.ok) throw new Error(response.error?.message || "BrowserCrew could not create the draft skill.");
     watchState = response.state;
     renderWatchState();
+    syncWatchPolling();
     showDraftSummary(response.draft);
     if (completionInput) completionInput.value = "";
     await refreshSkillLibrary();
@@ -144,6 +148,21 @@ async function refreshWatchState() {
     if (response.ok) watchState = response.state;
   } catch {}
   renderWatchState();
+  syncWatchPolling();
+}
+
+function syncWatchPolling() {
+  const active = ["watching", "paused", "scope_review"].includes(watchState?.session?.status);
+  if (!active) {
+    if (watchPollTimer) clearTimeout(watchPollTimer);
+    watchPollTimer = null;
+    return;
+  }
+  if (watchPollTimer) return;
+  watchPollTimer = setTimeout(async () => {
+    watchPollTimer = null;
+    await refreshWatchState();
+  }, 400);
 }
 
 function renderWatchState() {
