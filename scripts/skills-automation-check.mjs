@@ -27,7 +27,8 @@ for (const file of [
   "src/schedules-runtime.js",
   "src/skills-automation-ui.js",
   "scripts/watch-me-smoke.mjs",
-  "scripts/schedule-review-check.mjs"
+  "scripts/schedule-review-check.mjs",
+  "scripts/schedule-review-smoke.mjs"
 ]) await execFileAsync(process.execPath, ["--check", file]);
 
 const runnerSource = await readFile("src/skills-runner.js", "utf8");
@@ -66,8 +67,14 @@ for (const phrase of [
   'id="watchMeCompletionText"',
   "What text tells you this worked?",
   "completionText",
-  "Don’t use a name, email, account number, password, or other private value."
-]) if (!watchUiSource.includes(phrase)) throw new Error(`Watch Me UI safety copy/contract missing: ${phrase}`);
+  "Don’t use a name, email, account number, password, or other private value.",
+  'const SCHEDULES_PORT = "browsercrew-schedules"',
+  "Missed jobs waiting for you",
+  "Run this missed job once",
+  "Skip this missed job",
+  "Scheduling is not active in this build",
+  "Nothing has been dispatched for this missed occurrence."
+]) if (!watchUiSource.includes(phrase)) throw new Error(`Skills automation UI safety copy/contract missing: ${phrase}`);
 
 const watchSmokeSource = await readFile("scripts/watch-me-smoke.mjs", "utf8");
 for (const phrase of [
@@ -79,12 +86,29 @@ for (const phrase of [
   "Runtime input values must never enter durable skill-run history."
 ]) if (!watchSmokeSource.includes(phrase)) throw new Error(`Watch Me installed-extension proof missing: ${phrase}`);
 
+const scheduleSmokeSource = await readFile("scripts/schedule-review-smoke.mjs", "utf8");
+for (const phrase of [
+  "SCHEDULE_DISPATCH_REQUIRED",
+  "SCHEDULE_MISSED_USER_SKIPPED",
+  "scheduleReviewCount",
+  "Run this missed job once remains pending and dispatches nothing before scheduler boot",
+  "A fail-closed run-once choice can still be safely resolved as Skip later"
+]) if (!scheduleSmokeSource.includes(phrase)) throw new Error(`Missed schedule review installed-extension proof missing: ${phrase}`);
+
 const qualityWorkflow = await readFile(".github/workflows/quality.yml", "utf8");
-for (const phrase of ["npm run watch-me-smoke", "name: watch-me-evidence", "path: artifacts/watch-me-smoke"]) {
-  if (!qualityWorkflow.includes(phrase)) throw new Error(`Current-stable Watch Me CI gate missing: ${phrase}`);
-}
+for (const phrase of [
+  "npm run watch-me-smoke",
+  "name: watch-me-evidence",
+  "path: artifacts/watch-me-smoke",
+  "npm run schedule-review-smoke",
+  "name: schedule-review-evidence",
+  "path: artifacts/schedule-review-smoke"
+]) if (!qualityWorkflow.includes(phrase)) throw new Error(`Current-stable post-v0.2 browser CI gate missing: ${phrase}`);
+
 const previousStableRunner = await readFile("scripts/previous-stable-runner.mjs", "utf8");
-if (!previousStableRunner.includes('"watch-me-smoke.mjs"')) throw new Error("Chrome 152 matrix must include Watch Me installed-extension coverage.");
+for (const target of ['"watch-me-smoke.mjs"', '"schedule-review-smoke.mjs"']) {
+  if (!previousStableRunner.includes(target)) throw new Error(`Chrome 152 matrix must include ${target}.`);
+}
 
 const scheduleRuntimeSource = await readFile("src/schedules-runtime.js", "utf8");
 for (const phrase of [
@@ -113,55 +137,11 @@ if ((manifest.permissions || []).includes("alarms")) throw new Error("Do not wid
 
 const origin = "https://example.test";
 let watch = createWatchSession({ id: "watch-001", tabId: 7, origin, startedAt: "2026-09-12T12:00:00.000Z" });
-watch = recordWatchEvent(watch, {
-  id: "step-01",
-  kind: "navigate",
-  tabId: 7,
-  origin,
-  pageUrl: `${origin}/form`,
-  url: `${origin}/form`,
-  occurredAt: "2026-09-12T12:00:01.000Z"
-});
-watch = recordWatchEvent(watch, {
-  id: "step-02",
-  kind: "type",
-  tabId: 7,
-  origin,
-  pageUrl: `${origin}/form`,
-  occurredAt: "2026-09-12T12:00:02.000Z",
-  target: { role: "textbox", label: "Email address", name: "email" },
-  variableName: "emailAddress",
-  value: "person@example.com"
-});
-watch = recordWatchEvent(watch, {
-  id: "step-03",
-  kind: "select",
-  tabId: 7,
-  origin,
-  pageUrl: `${origin}/form`,
-  occurredAt: "2026-09-12T12:00:02.500Z",
-  target: { role: "combobox", label: "Department", name: "department" },
-  variableName: "department",
-  value: "private-demonstration-choice"
-});
-watch = recordWatchEvent(watch, {
-  id: "step-04",
-  kind: "click",
-  tabId: 7,
-  origin,
-  pageUrl: `${origin}/form`,
-  occurredAt: "2026-09-12T12:00:03.000Z",
-  target: { role: "button", label: "Preview" }
-});
-watch = recordWatchEvent(watch, {
-  id: "step-05",
-  kind: "verify",
-  tabId: 7,
-  origin,
-  pageUrl: `${origin}/form`,
-  occurredAt: "2026-09-12T12:00:04.000Z",
-  expect: { visibleText: "Ready to review" }
-});
+watch = recordWatchEvent(watch, { id: "step-01", kind: "navigate", tabId: 7, origin, pageUrl: `${origin}/form`, url: `${origin}/form`, occurredAt: "2026-09-12T12:00:01.000Z" });
+watch = recordWatchEvent(watch, { id: "step-02", kind: "type", tabId: 7, origin, pageUrl: `${origin}/form`, occurredAt: "2026-09-12T12:00:02.000Z", target: { role: "textbox", label: "Email address", name: "email" }, variableName: "emailAddress", value: "person@example.com" });
+watch = recordWatchEvent(watch, { id: "step-03", kind: "select", tabId: 7, origin, pageUrl: `${origin}/form`, occurredAt: "2026-09-12T12:00:02.500Z", target: { role: "combobox", label: "Department", name: "department" }, variableName: "department", value: "private-demonstration-choice" });
+watch = recordWatchEvent(watch, { id: "step-04", kind: "click", tabId: 7, origin, pageUrl: `${origin}/form`, occurredAt: "2026-09-12T12:00:03.000Z", target: { role: "button", label: "Preview" } });
+watch = recordWatchEvent(watch, { id: "step-05", kind: "verify", tabId: 7, origin, pageUrl: `${origin}/form`, occurredAt: "2026-09-12T12:00:04.000Z", expect: { visibleText: "Ready to review" } });
 watch = stopWatchSession(watch, "2026-09-12T12:00:05.000Z");
 
 const draft = draftSkillFromWatchSession(watch, {
@@ -184,49 +164,20 @@ const materialized = materializeSkillSteps(approved, { emailAddress: "run@exampl
 assert.equal(materialized[1].value, "run@example.com");
 assert.equal(materialized[2].value, "Sales");
 
-const fullGrant = {
-  origins: [origin],
-  actionClasses: ["read", "page_write_prepare"],
-  dataDestinations: [],
-  revoked: false,
-  expiresAt: "2099-01-01T00:00:00.000Z"
-};
+const fullGrant = { origins: [origin], actionClasses: ["read", "page_write_prepare"], dataDestinations: [], revoked: false, expiresAt: "2099-01-01T00:00:00.000Z" };
 assert.equal(assertGrantCoversSkill(approved, fullGrant), true);
 assert.throws(() => assertGrantCoversSkill(approved, { ...fullGrant, actionClasses: ["read"] }), /missing permission/);
 assert.throws(() => assertGrantCoversSkill(approved, { ...fullGrant, revoked: true }), /active permission grant/);
 
 let secretWatch = createWatchSession({ id: "watch-secret", tabId: 8, origin, startedAt: "2026-09-12T12:02:00.000Z" });
-secretWatch = recordWatchEvent(secretWatch, {
-  id: "step-secret",
-  kind: "type",
-  tabId: 8,
-  origin,
-  pageUrl: `${origin}/login`,
-  occurredAt: "2026-09-12T12:02:01.000Z",
-  target: { role: "textbox", type: "password", label: "Password", name: "password", autocomplete: "current-password" },
-  variableName: "accountPassword",
-  value: "NEVER_PERSIST_THIS_PASSWORD"
-});
+secretWatch = recordWatchEvent(secretWatch, { id: "step-secret", kind: "type", tabId: 8, origin, pageUrl: `${origin}/login`, occurredAt: "2026-09-12T12:02:01.000Z", target: { role: "textbox", type: "password", label: "Password", name: "password", autocomplete: "current-password" }, variableName: "accountPassword", value: "NEVER_PERSIST_THIS_PASSWORD" });
 secretWatch = stopWatchSession(secretWatch, "2026-09-12T12:02:02.000Z");
-const secretDraft = draftSkillFromWatchSession(secretWatch, {
-  skillId: "login-helper",
-  title: "Enter a login value",
-  description: "Use a private runtime value without storing the demonstrated secret.",
-  createdAt: "2026-09-12T12:02:02.000Z"
-});
+const secretDraft = draftSkillFromWatchSession(secretWatch, { skillId: "login-helper", title: "Enter a login value", description: "Use a private runtime value without storing the demonstrated secret.", createdAt: "2026-09-12T12:02:02.000Z" });
 assert.equal(JSON.stringify(secretDraft).includes("NEVER_PERSIST_THIS_PASSWORD"), false);
 assert.equal(secretDraft.inputs.accountPassword.secret, true);
 assert.equal(secretDraft.inputs.accountPassword.default, undefined);
 
-assert.throws(() => recordWatchEvent(createWatchSession({ id: "watch-origin", tabId: 9, origin, startedAt: "2026-09-12T12:03:00.000Z" }), {
-  id: "step-cross-origin",
-  kind: "navigate",
-  tabId: 9,
-  origin: "https://other.test",
-  pageUrl: "https://other.test/",
-  url: "https://other.test/",
-  occurredAt: "2026-09-12T12:03:01.000Z"
-}), /approved site scope/);
+assert.throws(() => recordWatchEvent(createWatchSession({ id: "watch-origin", tabId: 9, origin, startedAt: "2026-09-12T12:03:00.000Z" }), { id: "step-cross-origin", kind: "navigate", tabId: 9, origin: "https://other.test", pageUrl: "https://other.test/", url: "https://other.test/", occurredAt: "2026-09-12T12:03:01.000Z" }), /approved site scope/);
 
 const forbidden = structuredClone(approved);
 forbidden.remoteCode = "https://evil.test/a.js";
@@ -255,30 +206,10 @@ assert.throws(() => assertScheduleDispatchable(schedule, approved, { grantsValid
 assert.throws(() => assertScheduleDispatchable(schedule, approved, { resourceFresh: false }), /stale or changed/);
 
 const scheduledAt = Date.parse("2026-09-12T03:00:00.000Z");
-assert.deepEqual(decideMissedRun(schedule, { scheduledTime: scheduledAt, firedAt: scheduledAt + MISSED_RUN_GRACE_MS }), {
-  action: "run",
-  missed: false,
-  latenessMs: MISSED_RUN_GRACE_MS,
-  reason: null
-});
-assert.deepEqual(decideMissedRun(schedule, { scheduledTime: scheduledAt, firedAt: scheduledAt + MISSED_RUN_GRACE_MS + 1 }), {
-  action: "run",
-  missed: true,
-  latenessMs: MISSED_RUN_GRACE_MS + 1,
-  reason: "SCHEDULE_MISSED_RUN_ONCE"
-});
-assert.deepEqual(decideMissedRun({ ...schedule, missedRunPolicy: "skip" }, { scheduledTime: scheduledAt, firedAt: scheduledAt + MISSED_RUN_GRACE_MS + 1 }), {
-  action: "skip",
-  missed: true,
-  latenessMs: MISSED_RUN_GRACE_MS + 1,
-  reason: "SCHEDULE_MISSED_SKIP"
-});
-assert.deepEqual(decideMissedRun({ ...schedule, missedRunPolicy: "ask" }, { scheduledTime: scheduledAt, firedAt: scheduledAt + MISSED_RUN_GRACE_MS + 1 }), {
-  action: "review",
-  missed: true,
-  latenessMs: MISSED_RUN_GRACE_MS + 1,
-  reason: "SCHEDULE_MISSED_REVIEW_REQUIRED"
-});
+assert.deepEqual(decideMissedRun(schedule, { scheduledTime: scheduledAt, firedAt: scheduledAt + MISSED_RUN_GRACE_MS }), { action: "run", missed: false, latenessMs: MISSED_RUN_GRACE_MS, reason: null });
+assert.deepEqual(decideMissedRun(schedule, { scheduledTime: scheduledAt, firedAt: scheduledAt + MISSED_RUN_GRACE_MS + 1 }), { action: "run", missed: true, latenessMs: MISSED_RUN_GRACE_MS + 1, reason: "SCHEDULE_MISSED_RUN_ONCE" });
+assert.deepEqual(decideMissedRun({ ...schedule, missedRunPolicy: "skip" }, { scheduledTime: scheduledAt, firedAt: scheduledAt + MISSED_RUN_GRACE_MS + 1 }), { action: "skip", missed: true, latenessMs: MISSED_RUN_GRACE_MS + 1, reason: "SCHEDULE_MISSED_SKIP" });
+assert.deepEqual(decideMissedRun({ ...schedule, missedRunPolicy: "ask" }, { scheduledTime: scheduledAt, firedAt: scheduledAt + MISSED_RUN_GRACE_MS + 1 }), { action: "review", missed: true, latenessMs: MISSED_RUN_GRACE_MS + 1, reason: "SCHEDULE_MISSED_REVIEW_REQUIRED" });
 assert.throws(() => decideMissedRun(schedule, { scheduledTime: scheduledAt, firedAt: scheduledAt, graceMs: -1 }), /grace must be zero or greater/);
 
 assert.deepEqual(decideScheduleConcurrency(schedule, { activeRun: false, queuedRun: false }), { action: "run", reason: null });
@@ -291,7 +222,7 @@ assert.deepEqual(decideScheduleConcurrency(queueOneSchedule, { activeRun: true, 
 const draftOnlySchedule = { ...schedule, skillRef: { id: draft.id, version: draft.version } };
 assert.throws(() => assertScheduleDispatchable(draftOnlySchedule, draft, { grantsValid: true, providerAvailable: true, resourceFresh: true }), /Only approved skill versions may execute/);
 
-const now = Date.parse("2026-09-12T03:00:00.000Z"); // 08:30 Asia/Kolkata
+const now = Date.parse("2026-09-12T03:00:00.000Z");
 const next = nextCalendarRun(schedule, now);
 assert.equal(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(next)), "09:30");
 const alarmSpec = toChromeAlarmSpec(schedule, now);
@@ -302,21 +233,12 @@ assert.equal(alarmSpec.persistAcrossSessions, true);
 const newYorkSchedule = { ...schedule, id: "daily-new-york", timezone: "America/New_York", recurrence: { kind: "daily", hour: 9, minute: 30 } };
 const beforeDst = Date.parse("2026-03-07T16:00:00.000Z");
 const afterDst = Date.parse("2026-03-08T16:00:00.000Z");
-const beforeDstNext = nextCalendarRun(newYorkSchedule, beforeDst);
-const afterDstNext = nextCalendarRun(newYorkSchedule, afterDst);
-assert.equal(new Intl.DateTimeFormat("en-GB", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(beforeDstNext)), "09:30");
-assert.equal(new Intl.DateTimeFormat("en-GB", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(afterDstNext)), "09:30");
+assert.equal(new Intl.DateTimeFormat("en-GB", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(nextCalendarRun(newYorkSchedule, beforeDst))), "09:30");
+assert.equal(new Intl.DateTimeFormat("en-GB", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(nextCalendarRun(newYorkSchedule, afterDst))), "09:30");
 
-const intervalSchedule = {
-  ...schedule,
-  id: "interval-review",
-  recurrence: { kind: "interval", everyMinutes: 60 }
-};
+const intervalSchedule = { ...schedule, id: "interval-review", recurrence: { kind: "interval", everyMinutes: 60 } };
 assert.equal(toChromeAlarmSpec(intervalSchedule, now).periodInMinutes, 60);
 
-assert.deepEqual(reconcileAlarmNames([schedule], [{ name: "browsercrew.schedule.old" }]), {
-  create: ["browsercrew.schedule.daily-review"],
-  clear: ["browsercrew.schedule.old"]
-});
+assert.deepEqual(reconcileAlarmNames([schedule], [{ name: "browsercrew.schedule.old" }]), { create: ["browsercrew.schedule.daily-review"], clear: ["browsercrew.schedule.old"] });
 
 console.log("BrowserCrew post-v0.2 Skills, Watch Me, and Schedules contract checks passed.\n");
