@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 58
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -30,6 +32,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Verify installed release package candidate
         run: npm run package-smoke
+      - name: Verify clean rollback to previous known-good source
+        run: npm run package-rollback-smoke
       - name: Run v0.1 installed-extension smoke test
         run: npm run browser-smoke
       - name: Run W2 directory installed-extension smoke test
