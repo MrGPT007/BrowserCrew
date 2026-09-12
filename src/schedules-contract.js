@@ -4,6 +4,7 @@ export const SCHEDULE_SCHEMA_VERSION = 1;
 export const MISSED_RUN_POLICIES = Object.freeze(["skip", "run_once_when_available", "ask"]);
 export const CONCURRENCY_POLICIES = Object.freeze(["skip_if_running", "queue_one"]);
 export const RECURRENCE_KINDS = Object.freeze(["once", "daily", "weekly", "interval"]);
+export const MISSED_RUN_GRACE_MS = 5 * 60_000;
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9._-]{1,127}$/;
 
@@ -31,20 +32,47 @@ export function validateSchedule(schedule) {
 
 export function assertScheduleDispatchable(schedule, skill, context = {}) {
   const result = validateSchedule(schedule);
-  if (!result.ok) throw new Error(`Schedule is invalid: ${result.errors.join(" ")}`);
-  if (!schedule.enabled) throw new Error("Schedule is paused.");
+  if (!result.ok) throw scheduleError("SCHEDULE_INVALID", `Schedule is invalid: ${result.errors.join(" ")}`);
+  if (!schedule.enabled) throw scheduleError("SCHEDULE_PAUSED", "Schedule is paused.");
   assertSkillExecutable(skill);
-  if (skill.id !== schedule.skillRef.id || skill.version !== schedule.skillRef.version) throw new Error("Schedule must run the exact approved skill version it references.");
-  if (context.activeRun && schedule.concurrencyPolicy === "skip_if_running") throw new Error("Schedule skipped because its previous run is still active.");
-  if (context.grantsValid === false) throw new Error("Scheduled run blocked because a required grant expired or was revoked.");
-  if (context.providerAvailable === false) throw new Error("Scheduled run blocked because its configured provider is unavailable.");
-  if (context.resourceFresh === false) throw new Error("Scheduled run blocked because its selected resource is stale or changed.");
+  if (skill.id !== schedule.skillRef.id || skill.version !== schedule.skillRef.version) throw scheduleError("SCHEDULE_SKILL_VERSION_CHANGED", "Schedule must run the exact approved skill version it references.");
+  if (context.activeRun && schedule.concurrencyPolicy === "skip_if_running") throw scheduleError("SCHEDULE_ALREADY_RUNNING", "Schedule skipped because its previous run is still active.");
+  if (context.grantsValid === false) throw scheduleError("SCHEDULE_GRANT_INVALID", "Scheduled run blocked because a required grant expired or was revoked.");
+  if (context.providerAvailable === false) throw scheduleError("SCHEDULE_PROVIDER_UNAVAILABLE", "Scheduled run blocked because its configured provider is unavailable.");
+  if (context.resourceFresh === false) throw scheduleError("SCHEDULE_RESOURCE_STALE", "Scheduled run blocked because its selected resource is stale or changed.");
   return true;
+}
+
+export function decideMissedRun(schedule, { scheduledTime, firedAt, graceMs = MISSED_RUN_GRACE_MS } = {}) {
+  const check = validateSchedule(schedule);
+  if (!check.ok) throw scheduleError("SCHEDULE_INVALID", `Schedule is invalid: ${check.errors.join(" ")}`);
+  if (!Number.isFinite(scheduledTime) || !Number.isFinite(firedAt)) throw scheduleError("SCHEDULE_FIRE_TIME_INVALID", "Scheduled and fired times are required to evaluate a missed run.");
+  if (!Number.isFinite(graceMs) || graceMs < 0) throw scheduleError("SCHEDULE_GRACE_INVALID", "Missed-run grace must be zero or greater.");
+
+  const latenessMs = Math.max(0, firedAt - scheduledTime);
+  if (latenessMs <= graceMs) return { action: "run", missed: false, latenessMs, reason: null };
+
+  if (schedule.missedRunPolicy === "skip") {
+    return { action: "skip", missed: true, latenessMs, reason: "SCHEDULE_MISSED_SKIP" };
+  }
+  if (schedule.missedRunPolicy === "ask") {
+    return { action: "review", missed: true, latenessMs, reason: "SCHEDULE_MISSED_REVIEW_REQUIRED" };
+  }
+  return { action: "run", missed: true, latenessMs, reason: "SCHEDULE_MISSED_RUN_ONCE" };
+}
+
+export function decideScheduleConcurrency(schedule, { activeRun = false, queuedRun = false } = {}) {
+  const check = validateSchedule(schedule);
+  if (!check.ok) throw scheduleError("SCHEDULE_INVALID", `Schedule is invalid: ${check.errors.join(" ")}`);
+  if (!activeRun) return { action: "run", reason: null };
+  if (schedule.concurrencyPolicy === "skip_if_running") return { action: "skip", reason: "SCHEDULE_ALREADY_RUNNING" };
+  if (!queuedRun) return { action: "queue", reason: "SCHEDULE_QUEUED_ONE" };
+  return { action: "skip", reason: "SCHEDULE_QUEUE_FULL" };
 }
 
 export function toChromeAlarmSpec(schedule, now = Date.now()) {
   const check = validateSchedule(schedule);
-  if (!check.ok) throw new Error(`Schedule is invalid: ${check.errors.join(" ")}`);
+  if (!check.ok) throw scheduleError("SCHEDULE_INVALID", `Schedule is invalid: ${check.errors.join(" ")}`);
   const recurrence = schedule.recurrence;
   if (recurrence.kind === "once") return { when: recurrence.when, persistAcrossSessions: true };
   if (recurrence.kind === "interval") return {
@@ -75,7 +103,7 @@ export function nextCalendarRun(schedule, now = Date.now()) {
     }, schedule.timezone);
     if (candidate > now) return candidate;
   }
-  throw new Error("Unable to calculate next scheduled run.");
+  throw scheduleError("SCHEDULE_NEXT_RUN_FAILED", "Unable to calculate next scheduled run.");
 }
 
 export function reconcileAlarmNames(schedules, alarms) {
@@ -88,7 +116,7 @@ export function reconcileAlarmNames(schedules, alarms) {
 }
 
 export function alarmName(scheduleId) {
-  if (!ID_PATTERN.test(String(scheduleId || ""))) throw new Error("Invalid schedule id.");
+  if (!ID_PATTERN.test(String(scheduleId || ""))) throw scheduleError("SCHEDULE_ID_INVALID", "Invalid schedule id.");
   return `browsercrew.schedule.${scheduleId}`;
 }
 
@@ -144,3 +172,5 @@ function isTimeZone(value) {
   if (typeof value !== "string" || !value) return false;
   try { new Intl.DateTimeFormat("en-US", { timeZone: value }).format(); return true; } catch { return false; }
 }
+
+function scheduleError(code, message) { const error = new Error(message); error.code = code; return error; }
