@@ -136,7 +136,7 @@
   },
   "requiredStoreAssets": [
     { "id": "icon_128_png", "required": true, "status": "missing", "spec": "128x128 PNG in the extension ZIP" },
-    { "id": "screenshot_1280x800", "required": true, "status": "missing", "spec": "At least one 1280x800 or 640x400 product screenshot; 1280x800 preferred" },
+    { "id": "screenshot_1280x800", "required": true, "status": "generated_by_ci", "path": "artifacts/store-media/browsercrew-workspace-1280x800.png", "spec": "At least one 1280x800 or 640x400 product screenshot; BrowserCrew generates a real installed-extension 1280x800 Workspace screenshot" },
     { "id": "small_promo_440x280", "required": true, "status": "missing", "spec": "440x280 PNG or JPEG" },
     { "id": "youtube_video", "required": false, "status": "optional", "spec": "Optional/marketing video URL unless Dashboard requires it for the chosen listing flow" },
     { "id": "marquee_1400x560", "required": false, "status": "optional", "spec": "1400x560 PNG or JPEG" }
