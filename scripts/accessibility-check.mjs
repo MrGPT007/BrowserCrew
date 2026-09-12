@@ -68,7 +68,7 @@ for (const phrase of [
 const evidence = await readFile("docs/RELEASE-EVIDENCE-v0.2.md", "utf8");
 for (const phrase of [
   "| Accessibility | **Passed (machine)**",
-  "V02-B05` — **Resolved on PR #37 candidate head `b9e3e53904fadbe335c255123ff02b272b16fd46`",
+  "V02-B05 machine accessibility closure was proven on PR #37 exact head `b9e3e53904fadbe335c255123ff02b272b16fd46`",
   "34705329100",
   "34705611707",
   "10301965017",
