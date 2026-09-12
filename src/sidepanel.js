@@ -1,5 +1,6 @@
 const presets = {
   openai: { model: "gpt-5.6", baseUrl: "https://api.openai.com/v1", needsKey: true },
+  anthropic: { model: "claude-sonnet-5", baseUrl: "https://api.anthropic.com/v1", needsKey: true },
   lmstudio: { model: "local-model", baseUrl: "http://127.0.0.1:1234/v1", needsKey: false },
   ollama: { model: "qwen3:8b", baseUrl: "http://127.0.0.1:11434/v1", needsKey: false }
 };
@@ -317,7 +318,7 @@ async function requestOriginPermission(urlText) {
 function chooseProvider(kind, overwrite = false) {
   state.providerKind = kind;
   $$(".provider-card").forEach((card) => { const selected = card.dataset.provider === kind; card.classList.toggle("is-selected", selected); card.setAttribute("aria-checked", String(selected)); });
-  const preset = presets[kind];
+  const preset = presets[kind] || presets.openai;
   if (overwrite) {
     $("#modelInput").value = preset.model; $("#serverInput").value = preset.baseUrl; $("#apiKeyInput").value = "";
     state.lastConnectionOk = false; setAiStatus("idle", "Not tested");
@@ -340,7 +341,7 @@ function secretForRequest() {
   const typed = $("#apiKeyInput").value;
   return typed.length ? typed : undefined;
 }
-function providerLabel(kind) { return ({ openai: "OpenAI", lmstudio: "LM Studio", ollama: "Ollama" })[kind] || "Not selected"; }
+function providerLabel(kind) { return ({ openai: "OpenAI", anthropic: "Anthropic", lmstudio: "LM Studio", ollama: "Ollama" })[kind] || "Not selected"; }
 function setAiStatus(stateName,label) { const el=$("#aiStatus"); el.dataset.state=stateName; el.querySelector(".status-label").textContent=label; }
 function setPageStatus(stateName,label) { const el=$("#pageStatus"); el.dataset.state=stateName; el.querySelector(".status-label").textContent=label; }
 function setBusy(button,busy,label) { button.disabled=busy; button.textContent=label; }
