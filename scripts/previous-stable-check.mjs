@@ -3,6 +3,23 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const targets = [
+  "package-smoke.mjs",
+  "browser-smoke.mjs",
+  "directory-smoke.mjs",
+  "record-smoke.mjs",
+  "invoice-smoke.mjs",
+  "chat-smoke.mjs",
+  "connections-smoke.mjs",
+  "attachments-smoke.mjs",
+  "tools-smoke.mjs",
+  "anthropic-smoke.mjs",
+  "accessibility-smoke.mjs",
+  "mcp-smoke.mjs",
+  "c5-smoke.mjs",
+  "workspace-stop-smoke.mjs"
+];
+
 for (const file of ["scripts/previous-stable-runner.mjs", ".github/workflows/quality.yml", "docs/RELEASE-EVIDENCE-v0.2.md"]) await access(file);
 await execFileAsync(process.execPath, ["--check", "scripts/previous-stable-runner.mjs"]);
 
@@ -12,21 +29,15 @@ for (const phrase of [
   '152.0.7977.75',
   'browsercrew.previous_stable_chrome_receipt',
   'assert.equal(observedVersion, expectedVersion',
-  'package-smoke.mjs',
-  'browser-smoke.mjs',
-  'directory-smoke.mjs',
-  'record-smoke.mjs',
-  'invoice-smoke.mjs',
-  'chat-smoke.mjs',
-  'connections-smoke.mjs',
-  'attachments-smoke.mjs',
-  'tools-smoke.mjs',
-  'anthropic-smoke.mjs',
-  'accessibility-smoke.mjs',
-  'mcp-smoke.mjs',
-  'c5-smoke.mjs',
-  'workspace-stop-smoke.mjs'
+  ...targets
 ]) if (!runner.includes(phrase)) throw new Error(`Previous-stable runner contract missing: ${phrase}`);
+
+for (const target of targets) {
+  const source = await readFile(`scripts/${target}`, "utf8");
+  if (!source.includes('channel: "chromium",')) {
+    throw new Error(`${target} must retain the controlled Playwright Chromium launch marker so V02-B06 can redirect it to Chrome 152.`);
+  }
+}
 
 const workflow = await readFile(".github/workflows/quality.yml", "utf8");
 for (const phrase of [
@@ -46,5 +57,6 @@ if (!String(pkg.scripts?.check || "").includes("previous-stable-check.mjs")) thr
 
 const evidence = await readFile("docs/RELEASE-EVIDENCE-v0.2.md", "utf8");
 if (!evidence.includes("V02-B06")) throw new Error("Release ledger must retain the V02-B06 browser-coverage gate.");
+if (!evidence.includes("Browser compatibility | **Candidate**")) throw new Error("Release ledger must keep browser compatibility as a candidate until exact-head Chrome 152 evidence is green.");
 
 console.log("BrowserCrew V02-B06 previous-stable Chrome contracts passed.");
