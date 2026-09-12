@@ -1,0 +1,145 @@
+.agent-compare-card {
+  display: grid;
+  gap: var(--space-3, 0.9rem);
+}
+
+.agent-heading {
+  align-items: flex-start;
+}
+
+.agent-model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2, 0.75rem);
+}
+
+.agent-budget-strip,
+.agent-review-budget {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 2px solid var(--ink, #171717);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-soft, #f6f2ea);
+  box-shadow: 3px 3px 0 var(--ink, #171717);
+}
+
+.agent-budget-strip span,
+.agent-review-budget span {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: baseline;
+  font-size: 0.82rem;
+}
+
+.agent-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2, 0.75rem);
+}
+
+.agent-result-card,
+.agent-review-destination {
+  border: 2px solid var(--ink, #171717);
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface, #fffdf8);
+  box-shadow: 3px 3px 0 var(--ink, #171717);
+  padding: 0.85rem;
+}
+
+.agent-result-card strong,
+.agent-review-destination strong,
+.agent-review-destination span {
+  display: block;
+}
+
+.agent-result-text {
+  margin-top: 0.65rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.agent-activity {
+  border-top: 2px solid var(--ink, #171717);
+  padding-top: 0.65rem;
+}
+
+.agent-activity summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.agent-activity ol {
+  display: grid;
+  gap: 0.45rem;
+  padding-left: 1.2rem;
+}
+
+.agent-activity li {
+  padding-left: 0.2rem;
+}
+
+.agent-activity time {
+  display: inline-block;
+  min-width: 4.8rem;
+  margin-right: 0.4rem;
+  font-size: 0.75rem;
+  opacity: 0.68;
+}
+
+.agent-review-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(23, 23, 23, 0.48);
+}
+
+.agent-review-backdrop[hidden] {
+  display: none;
+}
+
+.agent-review-card {
+  width: min(100%, 34rem);
+  max-height: min(88vh, 46rem);
+  overflow: auto;
+  display: grid;
+  gap: 0.85rem;
+  padding: clamp(1rem, 4vw, 1.4rem);
+  border: 2px solid var(--ink, #171717);
+  border-radius: var(--radius-lg, 16px);
+  background: var(--surface, #fffdf8);
+  box-shadow: 6px 6px 0 var(--ink, #171717);
+}
+
+.agent-review-destination + .agent-review-destination {
+  margin-top: 0.65rem;
+}
+
+.agent-review-destination span {
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 390px) {
+  .agent-model-grid,
+  .agent-results {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-budget-strip,
+  .agent-review-budget {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #agentCompareCard {
+    scroll-behavior: auto;
+  }
+}
