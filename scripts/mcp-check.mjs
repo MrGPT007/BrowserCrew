@@ -28,7 +28,10 @@ for (const contract of [
   'maxCalls: 1',
   'approval.requested',
   'tool.authorized',
-  'tool.completed'
+  'tool.completed',
+  'canonicalJson(args)',
+  'canonicalJson(pending.arguments || {})',
+  'Object.keys(value).sort()'
 ]) if (!runtime.includes(contract)) throw new Error(`MCP runtime contract missing: ${contract}`);
 if (runtime.includes("chrome.cookies")) throw new Error("MCP runtime must never read browser cookies.");
 if (runtime.includes("Mcp-Session-Id")) throw new Error("C4 targets stateless MCP 2026-07-28 and must not add a legacy session dependency.");
