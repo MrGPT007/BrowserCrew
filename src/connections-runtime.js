@@ -235,12 +235,14 @@ function validateConnection(input) {
 }
 
 function normalizeSettings(settings = {}) {
-  const kind = ["openai", "lmstudio", "ollama"].includes(settings.kind) ? settings.kind : "openai";
-  const defaults = kind === "lmstudio"
-    ? { model: "local-model", baseUrl: "http://127.0.0.1:1234/v1" }
-    : kind === "ollama"
-      ? { model: "qwen3:8b", baseUrl: "http://127.0.0.1:11434/v1" }
-      : { model: "gpt-5.6", baseUrl: "https://api.openai.com/v1" };
+  const kind = ["openai", "anthropic", "lmstudio", "ollama"].includes(settings.kind) ? settings.kind : "openai";
+  const defaults = kind === "anthropic"
+    ? { model: "claude-sonnet-5", baseUrl: "https://api.anthropic.com/v1" }
+    : kind === "lmstudio"
+      ? { model: "local-model", baseUrl: "http://127.0.0.1:1234/v1" }
+      : kind === "ollama"
+        ? { model: "qwen3:8b", baseUrl: "http://127.0.0.1:11434/v1" }
+        : { model: "gpt-5.6", baseUrl: "https://api.openai.com/v1" };
   const model = String(settings.model || defaults.model).trim();
   const baseUrl = String(settings.baseUrl || defaults.baseUrl).trim().replace(/\/$/, "");
   if (!model) throw coded("MODEL_REQUIRED", "Enter the model name this connection should use.");
@@ -252,6 +254,7 @@ function defaultSettings() {
 }
 
 function defaultConnectionName(kind) {
+  if (kind === "anthropic") return "Anthropic API";
   if (kind === "lmstudio") return "LM Studio";
   if (kind === "ollama") return "Ollama";
   return "OpenAI API";
