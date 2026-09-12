@@ -43,7 +43,12 @@ for (const phrase of [
   "completionChecks",
   "release-matrix-summary.json",
   "release-matrix-receipts.jsonl",
-  "failed attempts remain in the denominator"
+  "failed attempts remain in the denominator",
+  "BROWSERCREW_CANDIDATE_SHA",
+  "GITHUB_EVENT_PATH",
+  "pull_request?.head?.sha",
+  "event?.after",
+  "exact 40-character candidate commit SHA"
 ]) if (!runner.includes(phrase)) throw new Error(`Release-matrix runner contract missing: ${phrase}`);
 for (const id of ids) if (!runner.includes(`\"${id}\"`)) throw new Error(`Release-matrix runner must explicitly map ${id}.`);
 
