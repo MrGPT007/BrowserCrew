@@ -24,7 +24,11 @@ In addition to the 75 workflow runs, exercise revoked site access, changed origi
 
 ## Privacy suite
 
-Seed unique canary values into secret/API-key storage, password-like fixture fields, unselected page content, and unrelated task history. Instrument model requests, logs, task history, exported CSV/JSON, error messages, and manifests. The privacy gate passes only when no canary reaches a sink outside its authorized scope.
+Seed unique canary values into secret/API-key storage, password-like fixture fields, script/hidden page content, an unselected tab, unrelated task history, and unrelated saved skills. Instrument model requests, logs, task history, exported CSV/JSON, error messages, manifests, and CI evidence artifacts. The privacy gate passes only when no canary reaches a sink outside its authorized scope.
+
+`scripts/privacy-smoke.mjs` is the first installed-extension privacy regression. It proves the selected read/model path removes password/script/hidden canaries before model context, excludes unselected tabs and unrelated local memory, keeps the provider secret out of request bodies and durable local task records, and serializes no raw canaries into its own evidence artifact. The configured provider secret is permitted only in the chosen endpoint Authorization header and Chrome session storage for this test.
+
+That first regression is intentionally insufficient for a full privacy pass. Remaining privacy coverage must include provider-error echo/redaction behavior, W2 CSV/JSON exports, W5 manifest/download metadata, and equivalent sink checks for other model-assisted workflows before `V02-B02` closes.
 
 ## Provider suite
 
