@@ -101,7 +101,7 @@ try {
   assert.equal(JSON.stringify(awaiting).includes("SKU-42"), false);
   pass("Write-capable MCP invocation stopped at a visible argument review before any external mutation");
 
-  await panel.evaluate(() => document.querySelector('[data-mcp-write-action="approve"]')?.click());
+  await clickCurrentApproval(panel);
   await waitUntil(() => mcpServer.writeCalls === 1, 6_000, async () => `writeCalls=${mcpServer.writeCalls}; ${await diagnosticState(panel)}`);
   pass("Approved write reached the exact MCP server once");
   await waitUntilAsync(async () => {
@@ -119,8 +119,9 @@ try {
   await panel.locator("#chatInput").fill("Use the external tool to set SKU-99 priority to high. This is the recovery test.");
   await panel.locator("#chatSendButton").click();
   await panel.locator("#mcpWriteApproval").waitFor({ state: "visible", timeout: timeoutMs });
+  await waitForText(panel.locator("#mcpWriteApproval"), "Approve this change");
   const writeStarted = withTimeout(mcpServer.waitForCrashWrite(), 10_000, "Timed out waiting for the crash-test MCP write to reach the server.");
-  await panel.evaluate(() => document.querySelector('[data-mcp-write-action="approve"]')?.click());
+  await clickCurrentApproval(panel, true);
   await writeStarted;
   assert.equal(mcpServer.writeCalls, 2);
 
@@ -174,6 +175,16 @@ try {
 }
 
 function pass(name) { report.checks.push({ name, at: new Date().toISOString() }); }
+
+async function clickCurrentApproval(panel, expectRunning = false) {
+  const button = panel.locator('#mcpWriteApproval [data-mcp-write-action="approve"]');
+  await button.waitFor({ state: "visible", timeout: timeoutMs });
+  assert.equal(await button.isEnabled(), true, "The current MCP write approval must be enabled before the test dispatches it.");
+  const actionId = await button.getAttribute("data-action-id");
+  assert.ok(actionId, "The current MCP write approval must be tied to an action id.");
+  await button.evaluate((element) => element.click());
+  if (expectRunning) await waitForText(panel.locator("#mcpWriteApproval"), "Running approved change…", 2_000);
+}
 
 async function diagnosticState(panel) {
   return panel.evaluate(async () => {
