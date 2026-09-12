@@ -46,21 +46,20 @@ export function sanitizeWatchEvent(rawEvent, session) {
     target: sanitizeTarget(rawEvent.target)
   };
 
-  if (rawEvent.kind === "type") {
+  if (rawEvent.kind === "type" || rawEvent.kind === "select") {
     const sensitivity = classifyInput(rawEvent.target || {});
-    const variableName = rawEvent.variableName || deriveVariableName(rawEvent.target || {}, session.events.length + 1);
+    const variableName = normalizeVariableName(rawEvent.variableName || deriveVariableName(rawEvent.target || {}, session.events.length + 1), session.events.length + 1);
+    const type = inputTypeForEvent(rawEvent);
     base.value = `{{input.${variableName}}}`;
     base.input = {
       name: variableName,
-      type: "string",
+      type,
       required: true,
       secret: sensitivity.secret,
       label: sensitivity.label
     };
     base.recordedLiteral = false;
     if (sensitivity.secret) base.redaction = "secret_value_never_recorded";
-  } else if (rawEvent.kind === "select") {
-    base.value = String(rawEvent.value ?? "").slice(0, 500);
   } else if (rawEvent.kind === "navigate") {
     base.url = safeUrl(rawEvent.url, rawEvent.origin);
   } else if (rawEvent.kind === "waitFor" || rawEvent.kind === "verify") {
@@ -139,6 +138,12 @@ export function classifyInput(target) {
   return { secret, label: secret ? "Private value" : cleanLabel(target) || "Recorded input" };
 }
 
+function inputTypeForEvent(event) {
+  const type = String(event.target?.type || "").toLowerCase();
+  if (["checkbox", "radio"].includes(type)) return "boolean";
+  return "string";
+}
+
 function sanitizeTarget(target) {
   if (!target || typeof target !== "object") return undefined;
   const result = {};
@@ -150,7 +155,8 @@ function sanitizeTarget(target) {
     id: target.id,
     testId: target.testId,
     type: target.type,
-    autocomplete: target.autocomplete
+    autocomplete: target.autocomplete,
+    placeholder: target.placeholder
   })) if (typeof value === "string" && value.trim()) result[key] = value.slice(0, 200);
   if (!result.role && !result.label && !result.ariaLabel && !result.id && !result.testId) return undefined;
   return result;
@@ -179,6 +185,12 @@ function deriveVariableName(target, index) {
   return candidate || `input${index}`;
 }
 
+function normalizeVariableName(value, index) {
+  let name = String(value || "").trim().replace(/[^a-zA-Z0-9_]+(.)?/g, (_, c) => c ? c.toUpperCase() : "").replace(/^[^a-z]+/i, "");
+  if (!/^[a-z]/.test(name)) name = `input${index}${name ? name[0].toUpperCase() + name.slice(1) : ""}`;
+  return name.slice(0, 64) || `input${index}`;
+}
+
 function cleanLabel(target) {
   return String(target.label || target.ariaLabel || target.name || target.id || target.placeholder || "").trim().slice(0, 80);
 }
@@ -195,7 +207,7 @@ function humanPurpose(event) {
   if (event.kind === "navigate") return "Open the demonstrated page within the approved site.";
   if (event.kind === "click") return `Choose ${label}.`;
   if (event.kind === "type") return `Enter the reviewed ${event.input?.label || "input"} in ${label}.`;
-  if (event.kind === "select") return `Choose the demonstrated option in ${label}.`;
+  if (event.kind === "select") return `Choose the reviewed ${event.input?.label || "option"} in ${label}.`;
   if (event.kind === "waitFor") return "Wait for the demonstrated page condition.";
   if (event.kind === "verify") return "Verify the demonstrated result before continuing.";
   if (event.kind === "download") return "Download the user-selected file and verify completion.";
