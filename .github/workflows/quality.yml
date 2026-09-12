@@ -22,10 +22,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Install pinned browser test dependencies
-        run: npm install --ignore-scripts
+      - name: Install locked browser test dependencies
+        run: npm ci --ignore-scripts
+      - name: Build deterministic v0.2 release candidate
+        run: npm run package-release
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
+      - name: Verify installed release package candidate
+        run: npm run package-smoke
       - name: Run v0.1 installed-extension smoke test
         run: npm run browser-smoke
       - name: Run W2 directory installed-extension smoke test
@@ -52,10 +56,12 @@ jobs:
         run: npm run c5-smoke
       - name: Run REL-01 Workspace Stop and Pause smoke test
         run: npm run workspace-stop-smoke
-      - name: Upload browser smoke evidence
+      - name: Upload browser and package evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: browser-smoke-evidence
-          path: artifacts
+          path: |
+            artifacts
+            dist
           if-no-files-found: warn
