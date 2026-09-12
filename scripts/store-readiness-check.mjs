@@ -98,8 +98,9 @@ if (!storeDoc.includes("Answer **No**. BrowserCrew does not fetch and execute re
 const requiredAssets = contract.requiredStoreAssets?.filter((asset) => asset.required) || [];
 if (!requiredAssets.length) throw new Error("Store contract must track required listing assets.");
 for (const asset of requiredAssets) {
-  if (!["missing", "ready"].includes(asset.status)) throw new Error(`Required store asset ${asset.id} has an unsupported status.`);
+  if (!["missing", "generated_by_ci", "ready"].includes(asset.status)) throw new Error(`Required store asset ${asset.id} has an unsupported status.`);
   if (!asset.spec) throw new Error(`Required store asset ${asset.id} needs an exact spec.`);
+  if (asset.status === "generated_by_ci" && !asset.path) throw new Error(`Generated store asset ${asset.id} must point to its reproducible artifact path.`);
 }
 
 for (const phrase of [
