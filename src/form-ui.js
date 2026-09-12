@@ -1,5 +1,6 @@
 import "./chat-ui.js";
 import "./chat-attachments-ui.js";
+import "./chat-tools-ui.js";
 import "./chat-provider-status.js";
 import "./connections-ui.js";
 import "./directory-ui.js";
