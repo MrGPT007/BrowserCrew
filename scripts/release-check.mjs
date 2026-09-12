@@ -21,7 +21,7 @@ for (const scenario of catalog.scenarios) {
   if (!/^W[1-5]-0[1-5]$/.test(scenario.id)) throw new Error(`Invalid release scenario id: ${scenario.id}`);
   if (ids.has(scenario.id)) throw new Error(`Duplicate release scenario id: ${scenario.id}`);
   ids.add(scenario.id);
-  if (!['representative', 'planned'].includes(scenario.coverage)) throw new Error(`Scenario ${scenario.id} has an unsupported coverage state.`);
+  if (!["representative", "planned"].includes(scenario.coverage)) throw new Error(`Scenario ${scenario.id} has an unsupported coverage state.`);
   if (scenario.coverage === "representative" && !scenario.evidence) throw new Error(`Representative scenario ${scenario.id} must point to regression evidence.`);
   if (scenario.coverage === "planned" && scenario.evidence) throw new Error(`Planned scenario ${scenario.id} must not masquerade as completed evidence.`);
 }
@@ -43,8 +43,18 @@ const providerMatrix = await readFile("docs/PROVIDER-MATRIX.md", "utf8");
 for (const provider of ["OpenAI API", "LM Studio", "Ollama", "Anthropic API"]) {
   if (!providerMatrix.includes(provider)) throw new Error(`Provider matrix is missing ${provider}.`);
 }
-if (!providerMatrix.includes("NOT CERTIFIED") || !providerMatrix.includes("BLOCKED / NOT CERTIFIED")) {
-  throw new Error("Provider matrix must not turn unverified presets into certification claims.");
+if (!providerMatrix.includes("NOT CERTIFIED")) {
+  throw new Error("Provider matrix must keep unverified external-provider paths explicitly NOT CERTIFIED.");
+}
+const anthropicRow = providerMatrix.split("\n").find((line) => line.startsWith("| Anthropic API |")) || "";
+if (!anthropicRow.includes("Implemented through the native Messages API adapter")) {
+  throw new Error("Provider matrix must describe the implemented Anthropic path as the native Messages API adapter.");
+}
+if (!anthropicRow.includes("**NOT CERTIFIED for live v0.2 provider gate**")) {
+  throw new Error("Deterministic Anthropic protocol evidence must never be promoted to live-provider certification.");
+}
+if (!providerMatrix.includes("A deterministic mock/stub result is never a substitute for live-provider evidence.")) {
+  throw new Error("Provider matrix must preserve the rule that deterministic fixtures cannot certify a live provider.");
 }
 
 const workflowMatrix = await readFile("docs/SUPPORTED-WORKFLOWS.md", "utf8");
