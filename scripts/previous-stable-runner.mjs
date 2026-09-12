@@ -29,7 +29,8 @@ const targets = [
   "mcp-smoke.mjs",
   "c5-smoke.mjs",
   "workspace-stop-smoke.mjs",
-  "watch-me-smoke.mjs"
+  "watch-me-smoke.mjs",
+  "schedule-review-smoke.mjs"
 ];
 const report = {
   kind: "browsercrew.previous_stable_chrome_receipt",
