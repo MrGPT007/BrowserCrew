@@ -19,13 +19,21 @@ jobs:
     timeout-minutes: 58
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Install pinned browser test dependencies
-        run: npm install --ignore-scripts
+      - name: Install locked browser test dependencies
+        run: npm ci --ignore-scripts
+      - name: Build deterministic v0.2 release candidate
+        run: npm run package-release
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
+      - name: Verify installed release package candidate
+        run: npm run package-smoke
+      - name: Verify clean rollback to previous known-good source
+        run: npm run package-rollback-smoke
       - name: Run v0.1 installed-extension smoke test
         run: npm run browser-smoke
       - name: Run W2 directory installed-extension smoke test
@@ -58,4 +66,11 @@ jobs:
         with:
           name: browser-smoke-evidence
           path: artifacts
+          if-no-files-found: warn
+      - name: Upload release package evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-package-evidence
+          path: dist
           if-no-files-found: warn
