@@ -62,6 +62,7 @@ assert.equal(catalog.scenarios.length, 25);
 assert.deepEqual(new Set(catalog.scenarios.map((item) => item.id)), new Set(Object.keys(scenarioMap)), "Runner map must exactly match the catalog.");
 
 const candidateSha = await resolveCandidateSha();
+assert.match(candidateSha, /^[0-9a-f]{40}$/i, "Release-matrix receipts require an exact 40-character candidate commit SHA.");
 const browserIdentity = await resolveBrowserIdentity();
 const catalogSnapshot = JSON.parse(JSON.stringify(catalog));
 await writeFile(join(artifactDir, "catalog-snapshot.json"), `${JSON.stringify(catalogSnapshot, null, 2)}\n`);
@@ -79,7 +80,7 @@ for (let attempt = 1; attempt <= catalog.requiredRunsPerScenario; attempt += 1) 
     let completionChecks = [];
     let failureReason = null;
     let sourceEvidence = null;
-    let providerIdentity = providerForScenario(scenario);
+    const providerIdentity = providerForScenario(scenario);
 
     if (mapping.suite === "planned") {
       failureReason = `missing_executable_scenario: ${mapping.reason}`;
@@ -191,7 +192,22 @@ async function runSuite(suite, attempt) {
 }
 
 async function resolveCandidateSha() {
-  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA;
+  const explicit = String(process.env.BROWSERCREW_CANDIDATE_SHA || "").trim();
+  if (/^[0-9a-f]{40}$/i.test(explicit)) return explicit;
+
+  const eventPath = String(process.env.GITHUB_EVENT_PATH || "").trim();
+  if (eventPath) {
+    try {
+      const event = JSON.parse(await readFile(eventPath, "utf8"));
+      const pullRequestHead = String(event?.pull_request?.head?.sha || "").trim();
+      if (/^[0-9a-f]{40}$/i.test(pullRequestHead)) return pullRequestHead;
+      const eventAfter = String(event?.after || "").trim();
+      if (/^[0-9a-f]{40}$/i.test(eventAfter)) return eventAfter;
+    } catch {}
+  }
+
+  const githubSha = String(process.env.GITHUB_SHA || "").trim();
+  if (/^[0-9a-f]{40}$/i.test(githubSha)) return githubSha;
   try {
     const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repoRoot });
     return stdout.trim();
