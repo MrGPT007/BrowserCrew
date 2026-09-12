@@ -48,6 +48,8 @@ jobs:
         run: npm run mcp-smoke
       - name: Run AGT-01 C5 bounded compare and handoff smoke test
         run: npm run c5-smoke
+      - name: Run REL-01 Workspace Stop and Pause smoke test
+        run: npm run workspace-stop-smoke
       - name: Upload browser smoke evidence
         if: always()
         uses: actions/upload-artifact@v4

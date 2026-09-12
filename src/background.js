@@ -4,6 +4,7 @@ const SESSION_KEY = "browsercrew.providerSecret.v1";
 const SKILLS_KEY = "browsercrew.skills.v1";
 const MAX_PAGE_CHARS = 18000;
 const MAX_SKILLS = 50;
+const activeTaskRuns = new Map();
 
 const TOOL_CATALOG = Object.freeze([
   {
@@ -60,7 +61,7 @@ async function handleMessage(message) {
     case "TEST_PROVIDER": return testProvider(message.settings, message.secret);
     case "RUN_TASK": return runTask(message.payload);
     case "PAUSE_TASK": return updateTaskControl(message.taskId, "paused");
-    case "STOP_TASK": return updateTaskControl(message.taskId, "cancelled");
+    case "STOP_TASK": return stopTask(message.taskId);
     case "GET_TASKS": return { ok: true, tasks: await getTasks() };
     case "GET_TOOL_CATALOG": return { ok: true, tools: TOOL_CATALOG };
     case "GET_SKILLS": return { ok: true, skills: await getSkills() };
@@ -123,6 +124,8 @@ async function runTask(payload) {
     checkpoint: "created", journal: [], result: null, error: null
   };
   await upsertTask(task);
+  const runtime = { taskId: task.id, cancelled: false, providerController: null };
+  activeTaskRuns.set(task.id, runtime);
 
   try {
     await assertNotStopped(task.id);
@@ -140,7 +143,7 @@ async function runTask(payload) {
     const secret = await resolveSecret(payload.secret);
     await ensureProviderPermission(settings.baseUrl);
     await journal(task.id, "provider.intent", { kind: settings.kind, model: settings.model, destination: new URL(settings.baseUrl).origin });
-    const extracted = await extractWithModel(settings, secret, payload.goal, observation);
+    const extracted = await extractWithModel(settings, secret, payload.goal, observation, runtime);
     await journal(task.id, "provider.complete", { model: extracted.model, usage: extracted.usage });
 
     await assertNotStopped(task.id);
@@ -161,6 +164,8 @@ async function runTask(payload) {
       await transition(task.id, "failed", "failed", serializeError(error));
     }
     return { ok: false, task: await getTask(task.id), error: serializeError(error) };
+  } finally {
+    activeTaskRuns.delete(task.id);
   }
 }
 
@@ -181,12 +186,12 @@ async function observeTab(tabId, expectedUrl) {
   return { ...result, observedAt: new Date().toISOString() };
 }
 
-async function extractWithModel(settings, secret, goal, observation) {
+async function extractWithModel(settings, secret, goal, observation, taskRuntime = null) {
   const schemaInstruction = "Return only one JSON object with this shape: {\"items\":[{\"label\":\"short name\",\"value\":\"exact text copied from the page or null\"}],\"notes\":\"short string\"}. Return at most 8 items. Do not invent missing values. Use null when the page does not contain a requested value.";
   const response = await callOpenAICompatible(settings, secret, [
     { role: "system", content: `You extract facts from browser-page text. ${schemaInstruction}` },
     { role: "user", content: `User job: ${goal}\n\nPage title: ${observation.title}\nPage address: ${observation.url}\n\nPage text:\n${observation.text}` }
-  ], { maxTokens: 500 });
+  ], { maxTokens: 500, taskRuntime });
   const content = response.choices?.[0]?.message?.content;
   if (typeof content !== "string") throw coded("BAD_MODEL_RESPONSE", "The AI answered in a format BrowserCrew could not read.");
   return { data: parseJsonObject(content), model: response.model || settings.model, usage: response.usage || null };
@@ -197,7 +202,11 @@ async function callOpenAICompatible(settings, secret, messages, options = {}) {
   const headers = { "Content-Type": "application/json" };
   if (secret) headers.Authorization = `Bearer ${secret}`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const taskRuntime = options.taskRuntime || null;
+  if (taskRuntime?.cancelled) throw coded("TASK_CANCELLED", "The job was stopped. BrowserCrew will not dispatch another AI request.");
+  let timedOut = false;
+  if (taskRuntime) taskRuntime.providerController = controller;
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 30000);
   let response;
   try {
     response = await fetch(endpoint, {
@@ -205,9 +214,15 @@ async function callOpenAICompatible(settings, secret, messages, options = {}) {
       body: JSON.stringify({ model: settings.model, messages, temperature: 0, max_tokens: options.maxTokens || 500 })
     });
   } catch (error) {
-    if (error?.name === "AbortError") throw coded("PROVIDER_TIMEOUT", "The AI service did not answer within 30 seconds.");
+    if (error?.name === "AbortError" && taskRuntime?.cancelled) {
+      throw coded("TASK_CANCELLED", "The job was stopped. BrowserCrew aborted its active AI request and will not start another step.");
+    }
+    if (error?.name === "AbortError" && timedOut) throw coded("PROVIDER_TIMEOUT", "The AI service did not answer within 30 seconds.");
     throw coded("PROVIDER_UNREACHABLE", "BrowserCrew could not reach this AI service. Check that the address is correct and, for local AI, that the server is running.");
-  } finally { clearTimeout(timeout); }
+  } finally {
+    clearTimeout(timeout);
+    if (taskRuntime?.providerController === controller) taskRuntime.providerController = null;
+  }
   const bodyText = await response.text();
   let body;
   try { body = JSON.parse(bodyText); } catch { body = null; }
@@ -308,6 +323,15 @@ async function transition(id, status, checkpoint, error = null) { return mutateT
 async function journal(id, type, data) { return mutateTask(id, (task) => { task.journal.push({ id: crypto.randomUUID(), at: new Date().toISOString(), type, data }); task.checkpoint = type; }); }
 async function completeTask(id, result) { return mutateTask(id, (task) => { task.status = "completed"; task.checkpoint = "completed"; task.result = result; }); }
 async function updateTaskControl(id, state) { const task = await transition(id, state, state); return { ok: true, task }; }
+async function stopTask(id) {
+  const task = await transition(id, "cancelled", "cancelled");
+  const runtime = activeTaskRuns.get(id);
+  if (runtime) {
+    runtime.cancelled = true;
+    runtime.providerController?.abort();
+  }
+  return { ok: true, task };
+}
 async function assertNotStopped(id) { const task = await getTask(id); if (task?.status === "cancelled") throw coded("TASK_CANCELLED", "The job was stopped. BrowserCrew will not dispatch another action."); if (task?.status === "paused") throw coded("TASK_PAUSED", "The job was paused. No new action will start until you run it again."); }
 async function reconcileInterruptedTasks() {
   const tasks = await getTasks(); let changed = false;
