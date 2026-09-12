@@ -26,7 +26,8 @@ for (const file of [
   "src/schedules-contract.js",
   "src/schedules-runtime.js",
   "src/skills-automation-ui.js",
-  "scripts/watch-me-smoke.mjs"
+  "scripts/watch-me-smoke.mjs",
+  "scripts/schedule-review-check.mjs"
 ]) await execFileAsync(process.execPath, ["--check", file]);
 
 const runnerSource = await readFile("src/skills-runner.js", "utf8");
@@ -87,6 +88,8 @@ if (!previousStableRunner.includes('"watch-me-smoke.mjs"')) throw new Error("Chr
 
 const scheduleRuntimeSource = await readFile("src/schedules-runtime.js", "utf8");
 for (const phrase of [
+  'const SCHEDULES_PORT = "browsercrew-schedules"',
+  "reviewMissedScheduleRun",
   "scheduledFor:",
   "latenessMs:",
   'settleWithoutDispatch(receipt, "needs_review"',
@@ -94,8 +97,19 @@ for (const phrase of [
   "SCHEDULE_QUEUE_FULL",
   "await drainQueuedRun(scheduleId)",
   "scheduleRunId: receipt.id",
-  'mode: "preflight"'
-]) if (!scheduleRuntimeSource.includes(phrase)) throw new Error(`Schedule runtime missed-run/concurrency contract missing: ${phrase}`);
+  'mode: "preflight"',
+  'receipt.reviewDecision = decision',
+  'receipt.reviewedAt = new Date().toISOString()',
+  "SCHEDULE_MISSED_USER_SKIPPED",
+  "SCHEDULE_REVIEW_NOT_PENDING",
+  "SCHEDULE_DISPATCH_REQUIRED"
+]) if (!scheduleRuntimeSource.includes(phrase)) throw new Error(`Schedule runtime missed-run/review contract missing: ${phrase}`);
+
+const serviceWorkerSource = await readFile("src/service-worker.js", "utf8");
+if (!serviceWorkerSource.includes('import "./schedules-runtime.js"')) throw new Error("Schedule review/list runtime must be loaded by the feature-branch service worker.");
+if (serviceWorkerSource.includes("bootSchedulesRuntime")) throw new Error("The v0.2 feature branch must not boot scheduled dispatch before the post-v0.2 activation release.");
+const manifest = JSON.parse(await readFile("manifest.json", "utf8"));
+if ((manifest.permissions || []).includes("alarms")) throw new Error("Do not widen the active v0.2 manifest with the alarms permission.");
 
 const origin = "https://example.test";
 let watch = createWatchSession({ id: "watch-001", tabId: 7, origin, startedAt: "2026-09-12T12:00:00.000Z" });
