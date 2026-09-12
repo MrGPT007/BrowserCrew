@@ -9,6 +9,7 @@ for (const file of [
   ".github/workflows/quality.yml",
   "package.json",
   "docs/CHROME-WEB-STORE-v0.2.md",
+  "docs/STORE-MEDIA-v0.2.md",
   "docs/RELEASE-EVIDENCE-v0.2.md"
 ]) await access(file);
 
@@ -58,9 +59,19 @@ for (const phrase of [
   "440×280 small promotional tile — **required, missing**"
 ]) if (!storeDoc.includes(phrase)) throw new Error(`Chrome Web Store submission pack media state missing: ${phrase}`);
 
+const mediaDoc = await readFile("docs/STORE-MEDIA-v0.2.md", "utf8");
+for (const phrase of [
+  "Engineering media readiness only — not submitted and not approved.",
+  "artifacts/store-media/browsercrew-workspace-1280x800.png",
+  "installed Manifest V3 extension",
+  "exact candidate SHA",
+  "128×128 PNG extension/store icon",
+  "440×280 small promotional tile",
+  "Issue #50 remains the tracking blocker"
+]) if (!mediaDoc.includes(phrase)) throw new Error(`Dedicated store-media evidence doc missing: ${phrase}`);
+
 const evidence = await readFile("docs/RELEASE-EVIDENCE-v0.2.md", "utf8");
 if (!evidence.includes("V02-B08")) throw new Error("Release ledger must retain V02-B08.");
-if (!evidence.includes("store media")) throw new Error("Release ledger must explain the current store-media readiness state.");
 if (evidence.includes("`V02-B08` — **Resolved")) throw new Error("Generated media evidence cannot resolve external Chrome Web Store review.");
 
 console.log("BrowserCrew V02-B08 store-media contracts passed (screenshot generated in CI; external store review still blocked).\n");
