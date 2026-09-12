@@ -1,0 +1,30 @@
+.connection-picker-wrap { margin-top:.75rem; padding-top:.72rem; border-top:2px solid var(--ink); }
+.connection-picker-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.55rem; align-items:stretch; }
+.connection-picker-row select { min-width:0; }
+.connection-list { display:grid; gap:.65rem; margin-top:.85rem; }
+.connection-item { border:2px solid var(--ink); border-radius:.7rem; padding:.65rem; background:var(--white); box-shadow:2px 2px 0 var(--ink); }
+.connection-item.is-active { background:var(--mint); }
+.connection-item-main { display:flex; align-items:flex-start; justify-content:space-between; gap:.65rem; }
+.connection-item-main p { margin:.15rem 0 0; font-size:.8rem; overflow-wrap:anywhere; }
+.connection-status { flex:0 0 auto; border:2px solid var(--ink); border-radius:999px; padding:.18rem .45rem; font-size:.72rem; font-weight:800; background:var(--paper); }
+.connection-status.status-connected { background:var(--mint); }
+.connection-status.status-failed { background:var(--red); }
+.connection-status.status-permission_needed { background:var(--yellow); }
+.connection-secret-note { margin:.55rem 0; font-size:.78rem; }
+.connection-actions { display:flex; flex-wrap:wrap; gap:.4rem; }
+.connection-transfer-backdrop { position:fixed; inset:0; z-index:1100; display:grid; place-items:center; padding:1rem; background:rgba(23,23,23,.42); }
+.connection-transfer-backdrop[hidden] { display:none; }
+.connection-transfer-card { width:min(31rem,100%); border:2px solid var(--ink); border-radius:.9rem; background:var(--paper); box-shadow:5px 5px 0 var(--ink); padding:.85rem; }
+.connection-transfer-card h2 { margin:.1rem 0 .55rem; }
+.connection-transfer-card > p:not(.eyebrow) { line-height:1.45; }
+
+@media (max-width:390px) {
+  .connection-picker-row { grid-template-columns:1fr; }
+  .connection-item-main { display:grid; }
+  .connection-status { width:max-content; }
+  .connection-actions .button { flex:1 1 calc(50% - .4rem); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-transfer-card, .connection-item { transition:none !important; }
+}
