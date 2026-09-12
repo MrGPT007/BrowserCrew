@@ -1,3 +1,4 @@
+import "./provider-adapters.js";
 import "./connections-startup.js";
 import "./connections-runtime.js";
 import "./chat-c5-runtime.js";

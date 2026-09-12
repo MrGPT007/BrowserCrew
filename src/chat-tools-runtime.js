@@ -131,10 +131,10 @@ async function executeToolEnabledRequest({ input, init, body, grant, conversatio
   const secondBody = {
     ...body,
     messages: [...body.messages, assistantToolCall, toolResult],
+    tools: [toolDefinition],
+    tool_choice: "none",
     stream: true
   };
-  delete secondBody.tools;
-  delete secondBody.tool_choice;
 
   const secondResponse = await providerFetch(input, { ...init, body: JSON.stringify(secondBody) });
   if (!secondResponse.ok) return secondResponse;

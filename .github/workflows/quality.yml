@@ -54,6 +54,8 @@ jobs:
         run: npm run attachments-smoke
       - name: Run C3 built-in Chat tool installed-extension smoke test
         run: npm run tools-smoke
+      - name: Run V02-B04 Anthropic protocol installed-extension smoke test
+        run: npm run anthropic-smoke
       - name: Run C4 MCP installed-extension smoke test
         run: npm run mcp-smoke
       - name: Run AGT-01 C5 bounded compare and handoff smoke test

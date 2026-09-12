@@ -291,12 +291,13 @@ async function ensureProviderPermission(baseUrl) {
 }
 
 function normalizeSettings(settings = {}) {
-  const kind = ["openai", "lmstudio", "ollama"].includes(settings.kind) ? settings.kind : "openai";
+  const kind = ["openai", "anthropic", "lmstudio", "ollama"].includes(settings.kind) ? settings.kind : "openai";
   const defaults = preset(kind);
   return { kind, model: String(settings.model || defaults.model).trim(), baseUrl: String(settings.baseUrl || defaults.baseUrl).replace(/\/$/, "") };
 }
 function defaultSettings() { return preset("openai"); }
 function preset(kind) {
+  if (kind === "anthropic") return { kind, model: "claude-sonnet-5", baseUrl: "https://api.anthropic.com/v1" };
   if (kind === "lmstudio") return { kind, model: "local-model", baseUrl: "http://127.0.0.1:1234/v1" };
   if (kind === "ollama") return { kind, model: "qwen3:8b", baseUrl: "http://127.0.0.1:11434/v1" };
   return { kind: "openai", model: "gpt-5.6", baseUrl: "https://api.openai.com/v1" };
