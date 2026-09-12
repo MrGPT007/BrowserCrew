@@ -16,13 +16,13 @@ jobs:
   browser-smoke:
     needs: static-checks
     runs-on: ubuntu-latest
-    timeout-minutes: 38
+    timeout-minutes: 44
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Install pinned browser test dependency
+      - name: Install pinned browser test dependencies
         run: npm install --ignore-scripts
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -40,6 +40,8 @@ jobs:
         run: npm run chat-smoke
       - name: Run C2 named AI-connection installed-extension smoke test
         run: npm run connections-smoke
+      - name: Run C2 document-attachment installed-extension smoke test
+        run: npm run attachments-smoke
       - name: Upload browser smoke evidence
         if: always()
         uses: actions/upload-artifact@v4
