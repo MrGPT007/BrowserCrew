@@ -154,7 +154,8 @@ async function runComparison() {
     }
   });
 
-  port.postMessage({ type: "RUN_COMPARE_TASK", payload: { tabIds: selectedIds, criteria, settings, secret: secretForRequest() } });
+  const selectedResources = selectedTabs.map(({ id, title, url }) => ({ id, title, url }));
+  port.postMessage({ type: "RUN_COMPARE_TASK", payload: { tabIds: selectedIds, selectedResources, criteria, settings, secret: secretForRequest() } });
 }
 
 function finishComparison(message) {

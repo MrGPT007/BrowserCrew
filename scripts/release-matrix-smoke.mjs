@@ -21,19 +21,19 @@ const WORKFLOW_PASS_THRESHOLD = 12;
 const scenarioMap = {
   "W1-01": { suite: "browser-smoke", report: "browser-smoke/report.json", check: "W1 compared five controlled supplier pages" },
   "W1-02": { suite: "browser-smoke", report: "browser-smoke/report.json", check: "missing-data reporting" },
-  "W1-03": { suite: "planned", reason: "stale-resource scenario has no executable release test yet" },
-  "W1-04": { suite: "planned", reason: "hostile-page-content scenario has no executable release test yet" },
-  "W1-05": { suite: "planned", reason: "provider-failure scenario has no executable release test yet" },
+  "W1-03": { suite: "w1-w3-adversarial", report: "w1-w3-adversarial/report.json", check: "W1-03 rejected a selected tab whose URL changed before dispatch" },
+  "W1-04": { suite: "w1-w3-adversarial", report: "w1-w3-adversarial/report.json", check: "W1-04 treated page-authored instructions as untrusted" },
+  "W1-05": { suite: "w1-w3-adversarial", report: "w1-w3-adversarial/report.json", check: "W1-05 preserved two verified pages" },
   "W2-01": { suite: "directory-smoke", report: "directory-smoke/report.json", check: "followed same-site Next links" },
   "W2-02": { suite: "directory-smoke", report: "directory-smoke/report.json", check: "explained exact and conflicting duplicates" },
   "W2-03": { suite: "planned", reason: "cross-origin-pagination scenario has no executable release test yet" },
   "W2-04": { suite: "planned", reason: "bounded-limit scenario has no executable release test yet" },
   "W2-05": { suite: "directory-smoke", report: "directory-smoke/report.json", check: "neutralized spreadsheet formula injection" },
   "W3-01": { suite: "browser-smoke", report: "browser-smoke/report.json", check: "previewed and filled approved fields" },
-  "W3-02": { suite: "planned", reason: "scope-escalation scenario has no executable release test yet" },
-  "W3-03": { suite: "planned", reason: "stale-approval scenario has no executable release test yet" },
+  "W3-02": { suite: "w1-w3-adversarial", report: "w1-w3-adversarial/report.json", check: "W3-02 dropped provider-proposed values" },
+  "W3-03": { suite: "w1-w3-adversarial", report: "w1-w3-adversarial/report.json", check: "W3-03 blocked stale approval" },
   "W3-04": { suite: "browser-smoke", report: "browser-smoke/report.json", check: "recovery did not replay an uncertain write" },
-  "W3-05": { suite: "planned", reason: "hostile-page-content form scenario has no executable release test yet" },
+  "W3-05": { suite: "w1-w3-adversarial", report: "w1-w3-adversarial/report.json", check: "W3-05 prevented hostile form metadata" },
   "W4-01": { suite: "record-smoke", report: "record-smoke/report.json", check: "previewed exact Before to After values" },
   "W4-02": { suite: "planned", reason: "wrong-resource scenario has no executable release test yet" },
   "W4-03": { suite: "planned", reason: "stale-before-value scenario has no executable release test yet" },
@@ -48,6 +48,7 @@ const scenarioMap = {
 
 const suiteCommands = {
   "browser-smoke": [process.execPath, [join(repoRoot, "scripts", "browser-smoke.mjs")]],
+  "w1-w3-adversarial": [process.execPath, [join(repoRoot, "scripts", "w1-w3-adversarial-smoke.mjs")]],
   "directory-smoke": [process.execPath, [join(repoRoot, "scripts", "directory-smoke.mjs")]],
   "record-smoke": [process.execPath, [join(repoRoot, "scripts", "record-smoke.mjs")]],
   "invoice-smoke": [process.execPath, [join(repoRoot, "scripts", "invoice-smoke.mjs")]]
@@ -227,6 +228,9 @@ async function resolveBrowserIdentity() {
 }
 
 function providerForScenario(scenario) {
+  if (["W1-03", "W1-04", "W1-05", "W3-02", "W3-03", "W3-05"].includes(scenario.id)) {
+    return { kind: "deterministic-openai-compatible-adversarial-fixture", model: "browsercrew-adversarial" };
+  }
   if (scenario.workflow === "W5") return { kind: "none", model: null, note: "W5 fixture is browser/download driven." };
   if (scenario.workflow === "W4") return { kind: "deterministic-openai-compatible-fixture", model: "browsercrew-w4-smoke" };
   if (scenario.workflow === "W2") return { kind: "deterministic-openai-compatible-fixture", model: "browsercrew-w2-smoke" };

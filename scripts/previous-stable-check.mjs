@@ -6,6 +6,7 @@ const execFileAsync = promisify(execFile);
 const targets = [
   "package-smoke.mjs",
   "browser-smoke.mjs",
+  "w1-w3-adversarial-smoke.mjs",
   "directory-smoke.mjs",
   "record-smoke.mjs",
   "invoice-smoke.mjs",
@@ -47,7 +48,8 @@ for (const phrase of [
   "BROWSERCREW_BROWSER_EXECUTABLE",
   "BROWSERCREW_EXPECT_BROWSER_VERSION",
   "npm run previous-stable-smoke",
-  "previous-stable-chrome-evidence"
+  "previous-stable-chrome-evidence",
+  "npm run w1-w3-adversarial-smoke"
 ]) if (!workflow.includes(phrase)) throw new Error(`Quality workflow previous-stable contract missing: ${phrase}`);
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
