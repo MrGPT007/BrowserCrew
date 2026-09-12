@@ -48,6 +48,7 @@
     "w2-w4-w5-adversarial-smoke": "node scripts/w2-w4-w5-adversarial-smoke.mjs",
     "store-media-smoke": "node scripts/store-media-smoke.mjs",
     "watch-me-smoke": "node scripts/watch-me-smoke.mjs",
+    "schedule-review-smoke": "node scripts/schedule-review-smoke.mjs",
     "previous-stable-smoke": "node scripts/previous-stable-runner.mjs",
     "release-matrix-smoke": "node scripts/release-matrix-smoke.mjs",
     "provider-certify": "node scripts/provider-certify.mjs",
