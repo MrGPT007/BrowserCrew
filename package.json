@@ -17,6 +17,7 @@
     "package-check": "node scripts/package-check.mjs",
     "package-release": "node scripts/package-release.mjs",
     "package-smoke": "node scripts/package-smoke.mjs",
+    "package-rollback-smoke": "node scripts/package-rollback-smoke.mjs",
     "browser-smoke": "node scripts/browser-smoke.mjs",
     "directory-smoke": "node scripts/directory-smoke.mjs",
     "record-smoke": "node scripts/record-smoke.mjs",
