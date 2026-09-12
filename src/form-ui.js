@@ -1,3 +1,4 @@
+import "./chat-ui.js";
 import "./directory-ui.js";
 import "./record-ui.js";
 import "./invoice-ui.js";

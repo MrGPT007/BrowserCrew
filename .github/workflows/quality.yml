@@ -16,7 +16,7 @@ jobs:
   browser-smoke:
     needs: static-checks
     runs-on: ubuntu-latest
-    timeout-minutes: 28
+    timeout-minutes: 34
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,6 +36,8 @@ jobs:
         run: npm run invoice-smoke
       - name: Run seeded privacy installed-extension smoke test
         run: npm run privacy-smoke
+      - name: Run C1 Chat installed-extension smoke test
+        run: npm run chat-smoke
       - name: Upload browser smoke evidence
         if: always()
         uses: actions/upload-artifact@v4

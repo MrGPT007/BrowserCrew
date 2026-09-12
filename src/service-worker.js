@@ -1,3 +1,4 @@
+import "./chat-runtime.js";
 import "./form-write.js";
 import "./compare-read.js";
 import "./directory-extract.js";
