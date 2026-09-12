@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 const storage = new Map();
 const listeners = { connect: [], alarm: [], startup: [], installed: [] };
 const alarms = new Map();
+const alarmsApi = {
+  onAlarm: { addListener(listener) { listeners.alarm.push(listener); } },
+  async create(name, spec) { alarms.set(name, { name, scheduledTime: spec.when || Date.now(), ...spec }); },
+  async clear(name) { return alarms.delete(name); },
+  async get(name) { return alarms.get(name) || null; },
+  async getAll() { return [...alarms.values()]; }
+};
 
 globalThis.chrome = {
   runtime: {
@@ -24,13 +31,6 @@ globalThis.chrome = {
         for (const key of Array.isArray(keys) ? keys : [keys]) storage.delete(key);
       }
     }
-  },
-  alarms: {
-    onAlarm: { addListener(listener) { listeners.alarm.push(listener); } },
-    async create(name, spec) { alarms.set(name, { name, scheduledTime: spec.when || Date.now(), ...spec }); },
-    async clear(name) { return alarms.delete(name); },
-    async get(name) { return alarms.get(name) || null; },
-    async getAll() { return [...alarms.values()]; }
   }
 };
 
@@ -97,6 +97,64 @@ storage.set(SCHEDULE_RUNS_KEY, [missed("skip-me"), missed("run-me")]);
 
 const runtime = await import("../src/schedules-runtime.js");
 
+// Prepared schedules are durable drafts and must not require chrome.alarms.
+// This keeps post-v0.2 setup work separate from the v0.2 manifest boundary.
+const preparedDraft = {
+  schemaVersion: 1,
+  id: "prepared-weekly-review",
+  name: "Prepared weekly review",
+  enabled: false,
+  skillRef: { id: approvedSkill.id, version: approvedSkill.version },
+  timezone: "Asia/Kolkata",
+  recurrence: { kind: "weekly", weekday: 1, hour: 10, minute: 15 },
+  missedRunPolicy: "ask",
+  concurrencyPolicy: "queue_one",
+  providerRef: "local-a",
+  grantRefs: [],
+  budgets: { maxSteps: 5, maxMinutes: 5 }
+};
+assert.equal(chrome.alarms, undefined, "Prepared-schedule CRUD test must begin without the alarms API.");
+const createdDraft = await runtime.saveSchedule(preparedDraft);
+assert.equal(createdDraft.ok, true);
+assert.equal(createdDraft.schedule.enabled, false);
+assert.equal(createdDraft.schedule.nextRunAt, null);
+assert.ok(createdDraft.schedule.createdAt);
+assert.ok(createdDraft.schedule.updatedAt);
+const preparedCreatedAt = createdDraft.schedule.createdAt;
+
+const updatedDraft = await runtime.saveSchedule({
+  ...createdDraft.schedule,
+  name: "Prepared daily review",
+  recurrence: { kind: "daily", hour: 8, minute: 45 }
+});
+assert.equal(updatedDraft.ok, true);
+assert.equal(updatedDraft.schedule.enabled, false);
+assert.equal(updatedDraft.schedule.nextRunAt, null);
+assert.equal(updatedDraft.schedule.createdAt, preparedCreatedAt, "Updating a prepared schedule must preserve its creation timestamp.");
+assert.equal(updatedDraft.schedule.name, "Prepared daily review");
+
+await assert.rejects(
+  runtime.setScheduleEnabled(preparedDraft.id, true),
+  (error) => error?.code === "ALARMS_PERMISSION_REQUIRED"
+);
+await assert.rejects(
+  runtime.saveSchedule({ ...updatedDraft.schedule, enabled: true }),
+  (error) => error?.code === "ALARMS_PERMISSION_REQUIRED"
+);
+let schedules = await runtime.listSchedules();
+let persistedDraft = schedules.find((item) => item.id === preparedDraft.id);
+assert.equal(persistedDraft?.enabled, false, "Failed activation must not mutate the prepared schedule.");
+assert.equal(persistedDraft?.name, "Prepared daily review");
+
+const pausedDraft = await runtime.setScheduleEnabled(preparedDraft.id, false);
+assert.equal(pausedDraft.ok, true);
+assert.equal(pausedDraft.schedule.enabled, false);
+assert.equal(pausedDraft.schedule.nextRunAt, null);
+const deletedDraft = await runtime.deleteSchedule(preparedDraft.id);
+assert.equal(deletedDraft.ok, true);
+schedules = await runtime.listSchedules();
+assert.equal(schedules.some((item) => item.id === preparedDraft.id), false, "Prepared schedule must be deletable without alarms permission.");
+
 const skipped = await runtime.reviewMissedScheduleRun("skip-me", "skip");
 assert.equal(skipped.ok, true);
 assert.equal(skipped.run.status, "skipped");
@@ -114,6 +172,8 @@ assert.equal(pending.status, "needs_review");
 assert.equal(pending.reason, "SCHEDULE_DISPATCH_REQUIRED");
 assert.equal(pending.reviewDecision, "run_once");
 
+// Only the future scheduler-enabled release supplies chrome.alarms and boots dispatch.
+chrome.alarms = alarmsApi;
 const dispatchCalls = [];
 await runtime.bootSchedulesRuntime({
   async dispatch(input) {
@@ -146,4 +206,4 @@ await assert.rejects(
   (error) => error?.code === "SCHEDULE_REVIEW_DECISION_INVALID"
 );
 
-console.log("BrowserCrew missed schedule review lifecycle checks passed.");
+console.log("BrowserCrew prepared schedule CRUD and missed schedule review lifecycle checks passed.");
