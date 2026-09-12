@@ -4,7 +4,16 @@ import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { materializeSkillSteps, promoteSkillDraft, validateSkill } from "../src/skills-contract.js";
 import { createWatchSession, draftSkillFromWatchSession, recordWatchEvent, stopWatchSession } from "../src/watch-me-contract.js";
-import { assertScheduleDispatchable, nextCalendarRun, reconcileAlarmNames, toChromeAlarmSpec, validateSchedule } from "../src/schedules-contract.js";
+import {
+  MISSED_RUN_GRACE_MS,
+  assertScheduleDispatchable,
+  decideMissedRun,
+  decideScheduleConcurrency,
+  nextCalendarRun,
+  reconcileAlarmNames,
+  toChromeAlarmSpec,
+  validateSchedule
+} from "../src/schedules-contract.js";
 import { assertGrantCoversSkill } from "../src/skills-runner.js";
 
 const execFileAsync = promisify(execFile);
@@ -75,6 +84,18 @@ for (const phrase of ["npm run watch-me-smoke", "name: watch-me-evidence", "path
 }
 const previousStableRunner = await readFile("scripts/previous-stable-runner.mjs", "utf8");
 if (!previousStableRunner.includes('"watch-me-smoke.mjs"')) throw new Error("Chrome 152 matrix must include Watch Me installed-extension coverage.");
+
+const scheduleRuntimeSource = await readFile("src/schedules-runtime.js", "utf8");
+for (const phrase of [
+  "scheduledFor:",
+  "latenessMs:",
+  'settleWithoutDispatch(receipt, "needs_review"',
+  'receipt.status = "queued"',
+  "SCHEDULE_QUEUE_FULL",
+  "await drainQueuedRun(scheduleId)",
+  "scheduleRunId: receipt.id",
+  'mode: "preflight"'
+]) if (!scheduleRuntimeSource.includes(phrase)) throw new Error(`Schedule runtime missed-run/concurrency contract missing: ${phrase}`);
 
 const origin = "https://example.test";
 let watch = createWatchSession({ id: "watch-001", tabId: 7, origin, startedAt: "2026-09-12T12:00:00.000Z" });
@@ -218,6 +239,41 @@ assert.equal(validateSchedule(schedule).ok, true);
 assert.equal(assertScheduleDispatchable(schedule, approved, { grantsValid: true, providerAvailable: true, resourceFresh: true }), true);
 assert.throws(() => assertScheduleDispatchable(schedule, approved, { grantsValid: false }), /grant expired or was revoked/);
 assert.throws(() => assertScheduleDispatchable(schedule, approved, { resourceFresh: false }), /stale or changed/);
+
+const scheduledAt = Date.parse("2026-09-12T03:00:00.000Z");
+assert.deepEqual(decideMissedRun(schedule, { scheduledTime: scheduledAt, firedAt: scheduledAt + MISSED_RUN_GRACE_MS }), {
+  action: "run",
+  missed: false,
+  latenessMs: MISSED_RUN_GRACE_MS,
+  reason: null
+});
+assert.deepEqual(decideMissedRun(schedule, { scheduledTime: scheduledAt, firedAt: scheduledAt + MISSED_RUN_GRACE_MS + 1 }), {
+  action: "run",
+  missed: true,
+  latenessMs: MISSED_RUN_GRACE_MS + 1,
+  reason: "SCHEDULE_MISSED_RUN_ONCE"
+});
+assert.deepEqual(decideMissedRun({ ...schedule, missedRunPolicy: "skip" }, { scheduledTime: scheduledAt, firedAt: scheduledAt + MISSED_RUN_GRACE_MS + 1 }), {
+  action: "skip",
+  missed: true,
+  latenessMs: MISSED_RUN_GRACE_MS + 1,
+  reason: "SCHEDULE_MISSED_SKIP"
+});
+assert.deepEqual(decideMissedRun({ ...schedule, missedRunPolicy: "ask" }, { scheduledTime: scheduledAt, firedAt: scheduledAt + MISSED_RUN_GRACE_MS + 1 }), {
+  action: "review",
+  missed: true,
+  latenessMs: MISSED_RUN_GRACE_MS + 1,
+  reason: "SCHEDULE_MISSED_REVIEW_REQUIRED"
+});
+assert.throws(() => decideMissedRun(schedule, { scheduledTime: scheduledAt, firedAt: scheduledAt, graceMs: -1 }), /grace must be zero or greater/);
+
+assert.deepEqual(decideScheduleConcurrency(schedule, { activeRun: false, queuedRun: false }), { action: "run", reason: null });
+assert.deepEqual(decideScheduleConcurrency(schedule, { activeRun: true, queuedRun: false }), { action: "skip", reason: "SCHEDULE_ALREADY_RUNNING" });
+const queueOneSchedule = { ...schedule, concurrencyPolicy: "queue_one" };
+assert.deepEqual(decideScheduleConcurrency(queueOneSchedule, { activeRun: false, queuedRun: false }), { action: "run", reason: null });
+assert.deepEqual(decideScheduleConcurrency(queueOneSchedule, { activeRun: true, queuedRun: false }), { action: "queue", reason: "SCHEDULE_QUEUED_ONE" });
+assert.deepEqual(decideScheduleConcurrency(queueOneSchedule, { activeRun: true, queuedRun: true }), { action: "skip", reason: "SCHEDULE_QUEUE_FULL" });
+
 const draftOnlySchedule = { ...schedule, skillRef: { id: draft.id, version: draft.version } };
 assert.throws(() => assertScheduleDispatchable(draftOnlySchedule, draft, { grantsValid: true, providerAvailable: true, resourceFresh: true }), /Only approved skill versions may execute/);
 
