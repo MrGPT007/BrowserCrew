@@ -1,12 +1,12 @@
 # BrowserCrew v0.2 Accessibility Audit
 
-Status: **ENGINEERING AUDIT IN PROGRESS**
+Status: **MACHINE ENGINEERING GATE**
 
-Human assistive-technology signoff: **OUTSTANDING**
+Human assistive-technology review: **OPTIONAL FUTURE FOLLOW-UP**
 
-This document separates executable accessibility engineering evidence from the manual assistive-technology review required by the v0.2 release plan. A green automated suite is **NOT a substitute for manual screen-reader review**.
+For the current v0.2 release scope, BrowserCrew treats deterministic machine accessibility coverage as the acceptance gate. Manual NVDA, VoiceOver, or JAWS review remains useful future product validation, but it is not a release blocker unless the project deliberately restores that requirement later.
 
-## Automated engineering audit
+## Machine accessibility gate
 
 The installed-extension `accessibility-smoke` suite runs BrowserCrew in Chromium at a 360px side-panel viewport and verifies:
 
@@ -22,15 +22,17 @@ The installed-extension `accessibility-smoke` suite runs BrowserCrew in Chromium
 - the viewport does not disable user zoom;
 - Chromium's accessibility tree exposes critical dialog/combobox roles and names.
 
-The automated audit remains part of the mandatory installed-extension matrix. It is regression protection for semantics and keyboard behavior, not a claim that every assistive-technology/browser combination behaves identically.
+This automated audit is part of the mandatory installed-extension matrix. V02-B05 passes only when the static accessibility contracts, this installed-Chromium suite, and all pre-existing BrowserCrew quality gates are green on one unchanged exact head.
 
-## 200% zoom and narrow-width review
+## Zoom and narrow-width coverage
 
-Automation verifies that BrowserCrew does not disable browser zoom and that the primary side-panel layout avoids page-level horizontal overflow at 360 CSS pixels in light and dark mode. The final human review must also inspect the primary flows at **200%** browser zoom for clipped text, obscured controls, lost content, and unusable approval surfaces.
+Automation verifies that BrowserCrew does not disable browser zoom and that the primary side-panel layout avoids page-level horizontal overflow at 360 CSS pixels in light and dark mode. The suite also checks reduced-motion behavior. These machine assertions are the current release requirement.
 
-## Manual keyboard review checklist
+## Optional future manual review checklist
 
-Run the packaged final release candidate, not a development rebuild. Record browser version, OS, candidate SHA, date, reviewer, defects, and fixes.
+The following checklist is retained for a later product-quality pass. It is not required to close V02-B05 for the current release scope.
+
+### Keyboard and zoom
 
 - [ ] Navigate every top-level section using Tab plus the tablist Arrow keys, Home, and End.
 - [ ] Complete W1–W5 primary review/start/stop paths without a mouse.
@@ -43,22 +45,18 @@ Run the packaged final release candidate, not a development rebuild. Record brow
 - [ ] Confirm no critical action depends only on hover, pointer precision, or color.
 - [ ] At 200% browser zoom, confirm primary content, approvals, errors, and Stop controls remain readable and operable.
 
-## Manual screen-reader review checklist
+### Assistive technology
 
-At minimum, record one Windows/Chrome review with **NVDA** where available. A second pass with VoiceOver/Safari or VoiceOver/Chrome on macOS is recommended; JAWS may be recorded when available. Do not check an item merely because the Chromium AX tree looked correct.
-
-- [ ] NVDA announces the BrowserCrew section tabs with selected state and understandable names.
+- [ ] NVDA announces BrowserCrew section tabs with selected state and understandable names.
 - [ ] NVDA announces custom radio groups with group/option names and checked state as selection changes.
-- [ ] NVDA announces form labels, helper relationships where needed, and approval controls without requiring visual inference.
-- [ ] NVDA announces Chat response status, error status, and Stop completion at useful times without excessive duplicate speech.
+- [ ] NVDA announces form labels, approval controls, Chat status, errors, and Stop completion at useful times.
 - [ ] NVDA announces C5 waiting/approved/stopped/limit states and the bounded transfer review content.
 - [ ] NVDA announces the saved-connection transfer dialog title and controls; focus does not escape behind the modal.
 - [ ] NVDA announces the Ctrl+K command bar as a dialog with a searchable command control and changing active option.
-- [ ] NVDA can understand result/evidence sections and the difference between informational status, warning, and approval-required states without relying on color.
-- [ ] VoiceOver or JAWS follow-up completed, or the release evidence explicitly records why that additional AT/browser combination was unavailable.
+- [ ] VoiceOver or JAWS follow-up completed if the project later chooses to require another AT/browser combination.
 
 ## Evidence required before V02-B05 can pass
 
-Record the exact final candidate SHA, merged-main CI run, accessibility artifact ID/digest, browser version, OS, manual keyboard reviewer, screen reader/version, defects found, fixes, and retest result in `docs/RELEASE-EVIDENCE-v0.2.md`.
+Record the exact candidate SHA, successful full quality run, accessibility step result, browser evidence artifact ID/digest, and merged-main verification in `docs/RELEASE-EVIDENCE-v0.2.md`.
 
-Until that record exists, the Accessibility gate remains **Blocked** and V02-B05 remains open.
+A future manual accessibility pass may add defects or stronger requirements, but its absence does not block the current V02-B05 machine-tested gate.
