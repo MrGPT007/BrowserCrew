@@ -28,7 +28,8 @@ const targets = [
   "accessibility-smoke.mjs",
   "mcp-smoke.mjs",
   "c5-smoke.mjs",
-  "workspace-stop-smoke.mjs"
+  "workspace-stop-smoke.mjs",
+  "watch-me-smoke.mjs"
 ];
 const report = {
   kind: "browsercrew.previous_stable_chrome_receipt",
