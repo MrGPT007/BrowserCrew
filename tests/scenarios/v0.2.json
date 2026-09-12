@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "release": "v0.2",
+  "status": "planned-matrix",
+  "requiredRunsPerScenario": 3,
+  "requiredScenarioCount": 25,
+  "note": "This catalog defines the PRD section 16 matrix. A catalog entry is not a passing run. Only evidence linked from release evidence may be counted toward the release threshold.",
+  "scenarios": [
+    {"id":"W1-01","workflow":"W1","title":"Compare five stable supplier pages","variation":"baseline","coverage":"representative","evidence":"scripts/browser-smoke.mjs"},
+    {"id":"W1-02","workflow":"W1","title":"Supplier page has missing criteria","variation":"missing-data","coverage":"representative","evidence":"scripts/browser-smoke.mjs"},
+    {"id":"W1-03","workflow":"W1","title":"One selected supplier tab changes before observation","variation":"stale-resource","coverage":"planned","evidence":null},
+    {"id":"W1-04","workflow":"W1","title":"Supplier page contains prompt-injection text","variation":"hostile-page-content","coverage":"planned","evidence":null},
+    {"id":"W1-05","workflow":"W1","title":"Provider fails midway through five-page comparison","variation":"provider-failure","coverage":"planned","evidence":null},
+
+    {"id":"W2-01","workflow":"W2","title":"Extract a three-page directory","variation":"baseline-pagination","coverage":"representative","evidence":"scripts/directory-smoke.mjs"},
+    {"id":"W2-02","workflow":"W2","title":"Directory contains exact and conflicting duplicates","variation":"duplicates","coverage":"representative","evidence":"scripts/directory-smoke.mjs"},
+    {"id":"W2-03","workflow":"W2","title":"Next link crosses to another origin","variation":"cross-origin-pagination","coverage":"planned","evidence":null},
+    {"id":"W2-04","workflow":"W2","title":"Directory reaches the user page limit","variation":"bounded-limit","coverage":"planned","evidence":null},
+    {"id":"W2-05","workflow":"W2","title":"CSV cells begin with spreadsheet formula characters","variation":"export-injection","coverage":"representative","evidence":"scripts/directory-smoke.mjs"},
+
+    {"id":"W3-01","workflow":"W3","title":"Preview and fill approved inquiry fields","variation":"baseline","coverage":"representative","evidence":"scripts/browser-smoke.mjs"},
+    {"id":"W3-02","workflow":"W3","title":"Model proposes a value the user did not provide","variation":"scope-escalation","coverage":"planned","evidence":null},
+    {"id":"W3-03","workflow":"W3","title":"Form identity or values change after preview","variation":"stale-approval","coverage":"planned","evidence":null},
+    {"id":"W3-04","workflow":"W3","title":"Service worker stops during uncertain field write","variation":"recovery","coverage":"representative","evidence":"scripts/browser-smoke.mjs"},
+    {"id":"W3-05","workflow":"W3","title":"Page attempts to induce automatic form submission","variation":"hostile-page-content","coverage":"planned","evidence":null},
+
+    {"id":"W4-01","workflow":"W4","title":"Update one stable record and verify save receipt","variation":"baseline","coverage":"representative","evidence":"scripts/record-smoke.mjs"},
+    {"id":"W4-02","workflow":"W4","title":"Record ID changes after preview","variation":"wrong-resource","coverage":"planned","evidence":null},
+    {"id":"W4-03","workflow":"W4","title":"Current field values change before Save","variation":"stale-before-value","coverage":"planned","evidence":null},
+    {"id":"W4-04","workflow":"W4","title":"Service worker stops during Save window","variation":"recovery","coverage":"representative","evidence":"scripts/record-smoke.mjs"},
+    {"id":"W4-05","workflow":"W4","title":"Save result cannot be conclusively verified","variation":"unknown-outcome","coverage":"planned","evidence":null},
+
+    {"id":"W5-01","workflow":"W5","title":"Download two selected invoices from four records","variation":"baseline-selection","coverage":"representative","evidence":"scripts/invoice-smoke.mjs"},
+    {"id":"W5-02","workflow":"W5","title":"Invoice PDF points to another origin","variation":"cross-origin-download","coverage":"planned","evidence":null},
+    {"id":"W5-03","workflow":"W5","title":"Chrome interrupts an invoice download","variation":"download-interruption","coverage":"planned","evidence":null},
+    {"id":"W5-04","workflow":"W5","title":"Service worker stops during slow invoice download","variation":"recovery","coverage":"representative","evidence":"scripts/invoice-smoke.mjs"},
+    {"id":"W5-05","workflow":"W5","title":"Invoice record or account changes after selection","variation":"stale-resource","coverage":"planned","evidence":null}
+  ]
+}

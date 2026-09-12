@@ -2,81 +2,80 @@
 
 **Give your browser a job. Choose your AI. Stay in control.**
 
-BrowserCrew is a Chrome Manifest V3 extension that runs browser tasks against pages you explicitly select, using a cloud or local AI connection you choose. The first vertical slice is intentionally read-only: select the current tab, ask for the product name and price, let BrowserCrew read a bounded text snapshot, and receive a result with source evidence saved to local history.
+BrowserCrew is a Chrome Manifest V3 browser-work assistant that runs bounded tasks against pages you explicitly select, using a local or cloud AI connection you choose. The repository is now a **v0.2 release candidate**, not a finished v0.2 release: all five named workflows have representative installed-Chromium evidence, while the full PRD release gates are still being completed.
 
-## What works in this first build
+## What works today
 
-- Chrome side panel with NeoBrutal Soft UI and light/dark themes.
-- Clear connection indicators for the selected AI and page.
-- Current-tab selection with per-site permission request.
-- OpenAI API, LM Studio, and Ollama presets using an OpenAI-compatible chat-completions path.
-- Session-only API-key storage; keys are not written to task history.
-- Read-only page observation through `chrome.scripting` with bounded text capture.
-- Model extraction into a validated JSON result.
-- Simple source-text verification and evidence receipt.
-- Durable local job history and safe worker-restart reconciliation.
-- Pause and Stop controls that prevent new steps from starting after state is recorded.
+- NeoBrutal Soft side-panel UI with light/dark themes, visible status text, keyboard focus, reduced motion, and tactile **compress, never float** controls.
+- Current-tab selection and exact-origin Chrome permission requests.
+- OpenAI-compatible AI connection path with OpenAI API, LM Studio, and Ollama presets. See `docs/PROVIDER-MATRIX.md` before treating a preset as a certified external provider.
+- Session-only provider-secret storage; secrets are not copied into task history.
+- Durable local task/history records and recovery-aware action journals.
+- Read-only source verification, reviewed writes, bounded pagination/export, and verified Chrome downloads.
 
-## Load it in Chrome
+### Certified representative workflows
 
-1. Download or clone this repository.
-2. Open `chrome://extensions`.
+| Workflow | Current controlled capability |
+| --- | --- |
+| **W1** | Compare 2–5 selected supplier pages against requested criteria, preserve source URLs, and identify missing values |
+| **W2** | Extract a same-origin paginated directory into declared columns, explain duplicates, and export safe CSV/JSON with provenance |
+| **W3** | Preview and fill a supported business inquiry form from user-provided details; **does not submit the form** |
+| **W4** | Update one identified record after exact Before → After review, press the bounded Save action once, and verify saved state |
+| **W5** | Confirm an invoice account, download only selected same-origin PDF invoices through Chrome, verify completed downloads, and export a manifest |
+
+These are controlled adapter contracts, not a promise to automate every website. See `docs/SUPPORTED-WORKFLOWS.md` for exact limits and unsupported operations.
+
+## v0.2 release status
+
+The combined W1–W5 installed-extension suite is green on the latest merged implementation baseline, including worker-interruption recovery for W3, W4, and W5. However, the PRD requires more than representative smoke tests. **v0.2 is not release-complete yet.**
+
+`docs/RELEASE-EVIDENCE-v0.2.md` is the source of truth for remaining gates. Current blockers include execution of the full 25-scenario / 75-run matrix, adversarial permission tests, seeded privacy tests, advertised-provider certification including the missing Anthropic adapter, manual accessibility review, previous-stable Chrome evidence, and deterministic release packaging/lock evidence.
+
+## Install for development
+
+1. Clone or download the repository.
+2. Open `chrome://extensions` in Chrome.
 3. Turn on **Developer mode**.
-4. Click **Load unpacked** and choose this repository folder.
-5. Pin BrowserCrew, then click its toolbar icon. The side panel opens.
+4. Choose **Load unpacked** and select this repository root.
+5. Click BrowserCrew's toolbar action to open the side panel.
 
-No build step is required for v0.1 feasibility.
-
-## Try the controlled fixture
-
-From the repository root, serve the fixture with any static server, for example:
-
-```bash
-python -m http.server 4173 --directory tests/fixtures
-```
-
-Open `http://localhost:4173/product.html`, open BrowserCrew, choose **Use the page I’m looking at**, set up an AI under **Choose AI**, test the connection, then run the default job.
-
-Expected fixture result:
-
-```json
-{
-  "productName": "Northstar Desk Lamp",
-  "price": "$49.00"
-}
-```
+No production build step is currently required. For exact local test commands and fixture setup, use `docs/INSTALL.md`.
 
 ## Local AI examples
 
-### LM Studio
+For LM Studio, start its local server, choose **LM Studio**, keep `http://127.0.0.1:1234/v1` unless you changed the port, enter the exact loaded model name, and choose **Test this AI connection**.
 
-1. Start LM Studio's local server.
-2. In BrowserCrew choose **LM Studio**.
-3. Keep the preset `http://127.0.0.1:1234/v1` unless you changed LM Studio's port.
-4. Enter the exact loaded model name.
-5. Click **Test this AI connection**.
+For Ollama, the preset uses `http://127.0.0.1:11434/v1`. Enter an installed model and test the connection.
 
-### Ollama
+Plain HTTP is accepted only for explicit loopback local endpoints (`localhost` or `127.0.0.1`). Cloud endpoints require HTTPS. BrowserCrew does not scan your network for model servers.
 
-The preset uses `http://127.0.0.1:11434/v1`, Ollama's OpenAI-compatible path. Enter a model installed on your machine, then run the connection test.
+## Safety boundaries
 
-## Safety boundaries in this slice
+BrowserCrew does not read cookies, export credentials, run arbitrary page JavaScript, execute shell commands, bypass CAPTCHAs, make autonomous payments, perform account-security changes, or expose unrestricted filesystem access. W3 fills approved fields but does not submit. W4 has one narrowly scoped supported Save contract. W5 uses Chrome's Downloads API only for user-selected supported invoice records and never treats a filename alone as proof.
 
-BrowserCrew cannot submit forms, purchase, delete, message, read cookies, export credentials, execute arbitrary page JavaScript, or access the filesystem. It reads only a selected `http`/`https` page after Chrome grants that origin. Cloud AI requires HTTPS; plain HTTP is accepted only for `localhost` and `127.0.0.1`.
+If a page, record, action, or download does not match the supported contract, BrowserCrew should block, return a partial result, or ask for user review rather than silently widening scope.
 
-## Design system
+## Design and copy system
 
-The UI follows **NeoBrutal Soft v0.7** from `NeoBrutalism-shop/NeoBrutal-Soft`, pinned for this implementation to commit `dfed77bd159ac5c38081f7a4ca5c2229b61ffb8a`. The physical interaction rule is **compress, never float**: raised controls move toward their shadow on hover and seat into the surface on press.
+The UI follows **NeoBrutal Soft v0.7**, pinned for this implementation to `NeoBrutalism-shop/NeoBrutal-Soft` commit `dfed77bd159ac5c38081f7a4ca5c2229b61ffb8a`. Raised controls move toward their shadow on hover and seat into the surface on press; they never float upward.
 
-UI copy follows the Grandma-Proof UI Copy Rulebook: labels explain what a choice does, the result of choosing it, and a recommended/default path in normal language.
+UI copy follows the Grandma-Proof UI Copy Rulebook: controls explain what happens, important consequences, and the recommended/default path in normal language. Status never relies on color alone.
 
-## Project docs
+## Release and engineering docs
 
-- `docs/ARCHITECTURE.md` — current trust boundaries and flow.
-- `docs/PERMISSIONS.md` — exact Chrome permissions and why each exists.
-- `docs/FEASIBILITY.md` — what this slice proves, what remains unverified.
+- `docs/PRD.md` — canonical product requirements and release gates.
+- `docs/ARCHITECTURE.md` — current runtime/trust boundaries.
+- `docs/PERMISSIONS.md` — declared Chrome permissions and runtime limits.
+- `docs/SUPPORTED-WORKFLOWS.md` — exact W1–W5 certified adapter boundaries.
+- `docs/PROVIDER-MATRIX.md` — implemented connection paths versus actual provider certification.
+- `docs/TEST-PLAN-v0.2.md` — 25-scenario release test design.
+- `tests/scenarios/v0.2.json` — machine-readable release scenario catalog.
+- `docs/THREAT-MODEL.md` — security assets, threats, controls, and remaining tests.
+- `docs/RELEASE-EVIDENCE-v0.2.md` — current pass/partial/blocked release ledger.
+- `docs/INSTALL.md` and `docs/ROLLBACK.md` — local install/test and rollback procedure.
+- `docs/FEASIBILITY.md` — v0.1 feasibility certification history.
 - `AGENTS.md` — coding-agent constraints.
 
-## Status
+## Roadmap
 
-This is the **v0.1 feasibility vertical slice**, not the full MVP. The next slice is controlled form preparation/commit on the bundled fixture with a scoped grant and crash reconciliation before any broader write surface is added.
+Finish the v0.2 release gates before widening the runtime. The next product milestone after those gates is v0.3: versioned declarative skills, project memory, and a permissioned remote MCP client. Specialist/swarm execution remains later work, not hidden v0.2 scope.
