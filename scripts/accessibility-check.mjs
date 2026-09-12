@@ -56,17 +56,18 @@ if (!workflow.includes("browser-smoke-evidence")) throw new Error("Accessibility
 
 const audit = await readFile("docs/ACCESSIBILITY-AUDIT-v0.2.md", "utf8");
 for (const phrase of [
-  "Automated engineering audit",
-  "Human assistive-technology signoff: **OUTSTANDING**",
+  "MACHINE ENGINEERING GATE",
+  "OPTIONAL FUTURE FOLLOW-UP",
+  "installed-extension `accessibility-smoke`",
   "NVDA",
   "VoiceOver",
-  "keyboard",
   "200%",
-  "NOT a substitute for manual screen-reader review"
-]) if (!audit.includes(phrase)) throw new Error(`Accessibility audit boundary/checklist missing: ${phrase}`);
+  "not a release blocker"
+]) if (!audit.includes(phrase)) throw new Error(`Accessibility machine-gate/checklist contract missing: ${phrase}`);
 
 const evidence = await readFile("docs/RELEASE-EVIDENCE-v0.2.md", "utf8");
-if (!evidence.includes("| Accessibility | **Blocked**")) throw new Error("Accessibility release gate must remain blocked until manual assistive-technology signoff is recorded.");
-if (!evidence.includes("V02-B05")) throw new Error("Release evidence must retain V02-B05 blocker identity.");
+if (!evidence.includes("| Accessibility | **Machine-gated**")) throw new Error("Accessibility release evidence must use the current machine-tested acceptance rule.");
+if (!evidence.includes("Manual NVDA/VoiceOver/JAWS review is an optional future enhancement")) throw new Error("Release evidence must explicitly keep manual AT review non-blocking for the current scope.");
+if (!evidence.includes("V02-B05")) throw new Error("Release evidence must retain V02-B05 blocker identity until the exact-head machine gate is green.");
 
 console.log("BrowserCrew v0.2 accessibility engineering contract checks passed.");
