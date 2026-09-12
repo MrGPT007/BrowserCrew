@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { materializeSkillSteps, promoteSkillDraft, validateSkill } from "../src/skills-contract.js";
 import { createWatchSession, draftSkillFromWatchSession, recordWatchEvent, stopWatchSession } from "../src/watch-me-contract.js";
@@ -14,8 +15,66 @@ for (const file of [
   "src/watch-me-contract.js",
   "src/watch-me-runtime.js",
   "src/schedules-contract.js",
-  "src/schedules-runtime.js"
+  "src/schedules-runtime.js",
+  "src/skills-automation-ui.js",
+  "scripts/watch-me-smoke.mjs"
 ]) await execFileAsync(process.execPath, ["--check", file]);
+
+const runnerSource = await readFile("src/skills-runner.js", "utf8");
+for (const phrase of [
+  "skill.step.intent",
+  "TARGET_AMBIGUOUS",
+  "CLICK_REQUIRES_COMMIT_APPROVAL",
+  "CLICK_REQUIRES_DOWNLOAD_APPROVAL",
+  "CLICK_LEAVES_APPROVED_SITE",
+  "CLICK_NOT_SAFE_TO_REPLAY",
+  "SKILL_DOWNLOAD_NOT_IMPLEMENTED"
+]) if (!runnerSource.includes(phrase)) throw new Error(`Approved-skill runner safety contract missing: ${phrase}`);
+
+const skillRuntimeSource = await readFile("src/skills-runtime.js", "utf8");
+for (const phrase of [
+  'const SKILL_RUNS_KEY = "browsercrew.skillRuns.v1"',
+  "assertExecutableCompletion(skills[index])",
+  "assertExecutableCompletion(skill)",
+  "onEvent: async (event) => appendSkillRunEvent(run.id, event)",
+  "SKILL_WORKER_RESTARTED",
+  "delete copy.inputValues",
+  "delete copy.secret"
+]) if (!skillRuntimeSource.includes(phrase)) throw new Error(`Durable skill execution contract missing: ${phrase}`);
+
+const watchRuntimeSource = await readFile("src/watch-me-runtime.js", "utf8");
+for (const phrase of [
+  "WATCH_COMPLETION_REQUIRED",
+  "WATCH_COMPLETION_NOT_VISIBLE",
+  "verifyCompletionText",
+  'kind: "verify"',
+  'expect: { visibleText: completionText }'
+]) if (!watchRuntimeSource.includes(phrase)) throw new Error(`Watch Me completion-evidence contract missing: ${phrase}`);
+
+const watchUiSource = await readFile("src/skills-automation-ui.js", "utf8");
+for (const phrase of [
+  'id="watchMeCompletionText"',
+  "What text tells you this worked?",
+  "completionText",
+  "Don’t use a name, email, account number, password, or other private value."
+]) if (!watchUiSource.includes(phrase)) throw new Error(`Watch Me UI safety copy/contract missing: ${phrase}`);
+
+const watchSmokeSource = await readFile("scripts/watch-me-smoke.mjs", "utf8");
+for (const phrase of [
+  "RUNTIME_PASSWORD_CANARY_99",
+  "browsercrew.skillRuns.v1",
+  "SKILL_CLICK_REQUIRES_COMMIT_APPROVAL",
+  'data-submits="0"',
+  "Every replayed step must have a durable intent journal entry.",
+  "Runtime input values must never enter durable skill-run history."
+]) if (!watchSmokeSource.includes(phrase)) throw new Error(`Watch Me installed-extension proof missing: ${phrase}`);
+
+const qualityWorkflow = await readFile(".github/workflows/quality.yml", "utf8");
+for (const phrase of ["npm run watch-me-smoke", "name: watch-me-evidence", "path: artifacts/watch-me-smoke"]) {
+  if (!qualityWorkflow.includes(phrase)) throw new Error(`Current-stable Watch Me CI gate missing: ${phrase}`);
+}
+const previousStableRunner = await readFile("scripts/previous-stable-runner.mjs", "utf8");
+if (!previousStableRunner.includes('"watch-me-smoke.mjs"')) throw new Error("Chrome 152 matrix must include Watch Me installed-extension coverage.");
 
 const origin = "https://example.test";
 let watch = createWatchSession({ id: "watch-001", tabId: 7, origin, startedAt: "2026-09-12T12:00:00.000Z" });
@@ -81,6 +140,8 @@ assert.equal(draft.inputs.emailAddress.default, undefined);
 assert.equal(draft.inputs.department.default, undefined);
 assert.equal(JSON.stringify(draft).includes("person@example.com"), false, "Watch Me must parameterize typed values rather than persisting demonstration literals.");
 assert.equal(JSON.stringify(draft).includes("private-demonstration-choice"), false, "Watch Me must parameterize selected values rather than persisting demonstration literals.");
+assert.equal(draft.steps.at(-1).kind, "verify");
+assert.equal(draft.steps.at(-1).expect.visibleText, "Ready to review");
 assert.equal(validateSkill(draft).ok, true);
 
 const approved = promoteSkillDraft(draft, { approvedAt: "2026-09-12T12:01:00.000Z" });
