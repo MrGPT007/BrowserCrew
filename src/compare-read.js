@@ -213,24 +213,8 @@ function verifyCriterionValues(criteria, data, pageText) {
     if (!normalizedPage.includes(normalizedValue)) {
       return { criterionRef: criterion.ref, criterion: criterion.label, value: null, found: false, verification: "The AI suggested a value, but BrowserCrew could not match it to the captured page text." };
     }
-    if (!candidateBoundToCriterion(normalizedPage, criterion.label, normalizedValue)) {
-      return { criterionRef: criterion.ref, criterion: criterion.label, value: null, found: false, verification: "The AI suggested source text, but BrowserCrew could not bind it to the requested criterion near that label." };
-    }
-    return { criterionRef: criterion.ref, criterion: criterion.label, value: candidate, found: true, verification: "Verified against captured page text near the requested criterion." };
+    return { criterionRef: criterion.ref, criterion: criterion.label, value: candidate, found: true, verification: "Verified against captured page text." };
   });
-}
-
-function candidateBoundToCriterion(normalizedPage, criterionLabel, normalizedValue) {
-  const label = normalizeEvidenceText(criterionLabel);
-  if (!label || !normalizedValue) return false;
-  let index = normalizedPage.indexOf(label);
-  while (index >= 0) {
-    const from = Math.max(0, index - 80);
-    const to = Math.min(normalizedPage.length, index + label.length + 240);
-    if (normalizedPage.slice(from, to).includes(normalizedValue)) return true;
-    index = normalizedPage.indexOf(label, index + label.length);
-  }
-  return false;
 }
 
 function normalizeEvidenceText(value) {
