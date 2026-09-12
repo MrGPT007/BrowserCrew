@@ -83,6 +83,14 @@ jobs:
           name: schedule-review-evidence
           path: artifacts/schedule-review-smoke
           if-no-files-found: error
+      - name: Run post-v0.2 prepared schedule setup installed-extension smoke test
+        run: npm run schedule-setup-smoke
+      - name: Upload prepared schedule setup evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-setup-evidence
+          path: artifacts/schedule-setup-smoke
+          if-no-files-found: error
       - name: Run v0.1 installed-extension smoke test
         run: npm run browser-smoke
       - name: Run V02-B01 W1/W3 adversarial installed-extension smoke test
