@@ -4,14 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node scripts/check.mjs && node scripts/directory-check.mjs && node scripts/record-check.mjs && node scripts/invoice-check.mjs && node scripts/release-check.mjs && node scripts/privacy-check.mjs",
+    "check": "node scripts/check.mjs && node scripts/directory-check.mjs && node scripts/record-check.mjs && node scripts/invoice-check.mjs && node scripts/release-check.mjs && node scripts/privacy-check.mjs && node scripts/chat-check.mjs",
     "release-check": "node scripts/release-check.mjs",
     "privacy-check": "node scripts/privacy-check.mjs",
+    "chat-check": "node scripts/chat-check.mjs",
     "browser-smoke": "node scripts/browser-smoke.mjs",
     "directory-smoke": "node scripts/directory-smoke.mjs",
     "record-smoke": "node scripts/record-smoke.mjs",
     "invoice-smoke": "node scripts/invoice-smoke.mjs",
-    "privacy-smoke": "node scripts/privacy-smoke.mjs"
+    "privacy-smoke": "node scripts/privacy-smoke.mjs",
+    "chat-smoke": "node scripts/chat-smoke.mjs"
   },
   "devDependencies": {
     "playwright": "1.63.0"
