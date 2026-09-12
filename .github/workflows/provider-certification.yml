@@ -1,0 +1,131 @@
+name: provider-certification
+on:
+  workflow_dispatch:
+    inputs:
+      provider_kind:
+        description: Provider to certify against the exact current main candidate
+        required: true
+        type: choice
+        options:
+          - openai
+          - anthropic
+          - lmstudio
+          - ollama
+      expected_candidate_sha:
+        description: Exact 40-character main SHA being certified
+        required: true
+        type: string
+      model:
+        description: Exact deployed model name
+        required: true
+        type: string
+      base_url:
+        description: Exact provider base URL; cloud providers are restricted in the certification script
+        required: true
+        type: string
+
+jobs:
+  openai:
+    if: ${{ inputs.provider_kind == 'openai' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify exact candidate before exposing credentials
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ inputs.expected_candidate_sha }}
+        run: |
+          test "$EXPECTED_CANDIDATE_SHA" = "$(git rev-parse HEAD)"
+          test ${#EXPECTED_CANDIDATE_SHA} -eq 40
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Certify live OpenAI deployment through installed BrowserCrew
+        env:
+          BROWSERCREW_PROVIDER_KIND: openai
+          BROWSERCREW_PROVIDER_MODEL: ${{ inputs.model }}
+          BROWSERCREW_PROVIDER_BASE_URL: ${{ inputs.base_url }}
+          BROWSERCREW_CANDIDATE_SHA: ${{ inputs.expected_candidate_sha }}
+          BROWSERCREW_PROVIDER_SECRET: ${{ secrets.BROWSERCREW_OPENAI_API_KEY }}
+        run: npm run provider-certify
+      - name: Upload sanitized OpenAI certification receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-certification-openai-${{ inputs.expected_candidate_sha }}
+          path: artifacts/provider-certification/openai/receipt.json
+          if-no-files-found: error
+
+  anthropic:
+    if: ${{ inputs.provider_kind == 'anthropic' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify exact candidate before exposing credentials
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ inputs.expected_candidate_sha }}
+        run: |
+          test "$EXPECTED_CANDIDATE_SHA" = "$(git rev-parse HEAD)"
+          test ${#EXPECTED_CANDIDATE_SHA} -eq 40
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Certify live Anthropic deployment through installed BrowserCrew
+        env:
+          BROWSERCREW_PROVIDER_KIND: anthropic
+          BROWSERCREW_PROVIDER_MODEL: ${{ inputs.model }}
+          BROWSERCREW_PROVIDER_BASE_URL: ${{ inputs.base_url }}
+          BROWSERCREW_CANDIDATE_SHA: ${{ inputs.expected_candidate_sha }}
+          BROWSERCREW_PROVIDER_SECRET: ${{ secrets.BROWSERCREW_ANTHROPIC_API_KEY }}
+        run: npm run provider-certify
+      - name: Upload sanitized Anthropic certification receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-certification-anthropic-${{ inputs.expected_candidate_sha }}
+          path: artifacts/provider-certification/anthropic/receipt.json
+          if-no-files-found: error
+
+  local:
+    if: ${{ inputs.provider_kind == 'lmstudio' || inputs.provider_kind == 'ollama' }}
+    runs-on: [self-hosted, Windows, X64, browsercrew-provider-certification]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify exact candidate on local certification runner
+        shell: pwsh
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ inputs.expected_candidate_sha }}
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($env:EXPECTED_CANDIDATE_SHA.Length -ne 40 -or $actual -ne $env:EXPECTED_CANDIDATE_SHA) { throw "Candidate SHA mismatch" }
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install chromium
+      - name: Certify live local provider through installed BrowserCrew
+        env:
+          BROWSERCREW_PROVIDER_KIND: ${{ inputs.provider_kind }}
+          BROWSERCREW_PROVIDER_MODEL: ${{ inputs.model }}
+          BROWSERCREW_PROVIDER_BASE_URL: ${{ inputs.base_url }}
+          BROWSERCREW_CANDIDATE_SHA: ${{ inputs.expected_candidate_sha }}
+        run: npm run provider-certify
+      - name: Upload sanitized local-provider certification receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-certification-${{ inputs.provider_kind }}-${{ inputs.expected_candidate_sha }}
+          path: artifacts/provider-certification/${{ inputs.provider_kind }}/receipt.json
+          if-no-files-found: error

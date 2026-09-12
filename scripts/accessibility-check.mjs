@@ -68,12 +68,12 @@ for (const phrase of [
 const evidence = await readFile("docs/RELEASE-EVIDENCE-v0.2.md", "utf8");
 for (const phrase of [
   "| Accessibility | **Passed (machine)**",
-  "V02-B05` — **Resolved on PR #37 candidate head `b9e3e53904fadbe335c255123ff02b272b16fd46`",
+  "V02-B05 machine accessibility closure was proven on PR #37 exact head `b9e3e53904fadbe335c255123ff02b272b16fd46`",
   "34705329100",
   "34705611707",
   "10301965017",
   "10301840261",
-  "Manual screen-reader testing is optional future QA under the current release policy"
+  "manual screen-reader review is optional future QA under the current release policy"
 ]) if (!evidence.includes(phrase)) throw new Error(`Resolved accessibility evidence contract missing: ${phrase}`);
 
 console.log("BrowserCrew v0.2 accessibility engineering contract checks passed.");
