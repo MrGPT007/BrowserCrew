@@ -67,6 +67,14 @@ jobs:
           name: store-media-evidence
           path: artifacts/store-media
           if-no-files-found: error
+      - name: Run post-v0.2 Watch Me installed-extension smoke test
+        run: npm run watch-me-smoke
+      - name: Upload Watch Me evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch-me-evidence
+          path: artifacts/watch-me-smoke
+          if-no-files-found: error
       - name: Run v0.1 installed-extension smoke test
         run: npm run browser-smoke
       - name: Run V02-B01 W1/W3 adversarial installed-extension smoke test
