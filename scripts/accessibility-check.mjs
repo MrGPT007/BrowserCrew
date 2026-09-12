@@ -66,8 +66,14 @@ for (const phrase of [
 ]) if (!audit.includes(phrase)) throw new Error(`Accessibility machine-gate/checklist contract missing: ${phrase}`);
 
 const evidence = await readFile("docs/RELEASE-EVIDENCE-v0.2.md", "utf8");
-if (!evidence.includes("| Accessibility | **Machine-gated**")) throw new Error("Accessibility release evidence must use the current machine-tested acceptance rule.");
-if (!evidence.includes("Manual NVDA/VoiceOver/JAWS review is an optional future enhancement")) throw new Error("Release evidence must explicitly keep manual AT review non-blocking for the current scope.");
-if (!evidence.includes("V02-B05")) throw new Error("Release evidence must retain V02-B05 blocker identity until the exact-head machine gate is green.");
+for (const phrase of [
+  "| Accessibility | **Passed (machine)**",
+  "V02-B05` — **Resolved on PR #37 candidate head `b9e3e53904fadbe335c255123ff02b272b16fd46`",
+  "34705329100",
+  "34705611707",
+  "10301965017",
+  "10301840261",
+  "Manual screen-reader testing is optional future QA under the current release policy"
+]) if (!evidence.includes(phrase)) throw new Error(`Resolved accessibility evidence contract missing: ${phrase}`);
 
 console.log("BrowserCrew v0.2 accessibility engineering contract checks passed.");
