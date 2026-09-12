@@ -288,11 +288,18 @@ function downloadInvoiceManifest() {
     notifyInvoice("Finish an invoice collection before downloading its manifest.");
     return;
   }
+  const result = invoiceState.result;
   const manifest = {
     kind: "browsercrew.invoice_manifest",
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
-    ...invoiceState.result
+    account: result.account,
+    portalUrl: result.portalUrl,
+    selectedCount: result.selectedCount,
+    verifiedCount: result.verifiedCount,
+    recovered: Boolean(result.recovered),
+    verificationMethod: result.verificationMethod,
+    entries: Array.isArray(result.entries) ? result.entries.map((entry) => ({ ...entry })) : []
   };
   const blob = new Blob([`${JSON.stringify(manifest, null, 2)}\n`], { type: "application/json" });
   const url = URL.createObjectURL(blob);
