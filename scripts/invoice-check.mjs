@@ -63,6 +63,16 @@ for (const contract of [
 ]) {
   if (!ui.includes(contract)) throw new Error(`Missing Grandma-proof W5 UI contract: ${contract}`);
 }
+for (const exportContract of [
+  'kind: "browsercrew.invoice_manifest"',
+  "schemaVersion: 1",
+  "account: result.account",
+  "portalUrl: result.portalUrl",
+  "entries: Array.isArray(result.entries)"
+]) {
+  if (!ui.includes(exportContract)) throw new Error(`Missing W5 manifest export contract: ${exportContract}`);
+}
+if (ui.includes("...invoiceState.result")) throw new Error("W5 manifest export must not spread internal task state over the public manifest schema.");
 
 const fixture = await readFile("tests/fixtures/invoice-portal.html", "utf8");
 for (const contract of [
