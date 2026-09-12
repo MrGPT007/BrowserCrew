@@ -73,7 +73,7 @@ for (const phrase of [
   "34705611707",
   "10301965017",
   "10301840261",
-  "Manual screen-reader testing is optional future QA under the current release policy"
+  "manual screen-reader review is optional future QA under the current release policy"
 ]) if (!evidence.includes(phrase)) throw new Error(`Resolved accessibility evidence contract missing: ${phrase}`);
 
 console.log("BrowserCrew v0.2 accessibility engineering contract checks passed.");
