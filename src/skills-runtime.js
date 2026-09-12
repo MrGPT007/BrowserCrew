@@ -67,8 +67,10 @@ export async function approveSkillVersion(skillId, version) {
   const skills = await listSkillVersions();
   const index = skills.findIndex((item) => item.id === skillId && item.version === version);
   if (index < 0) throw coded("SKILL_VERSION_NOT_FOUND", "That draft skill version could not be found.");
+  assertExecutableCompletion(skills[index]);
   const approved = promoteSkillDraft(skills[index], { approvedAt: new Date().toISOString(), approvedBy: "user" });
   assertSkillExecutable(approved);
+  assertExecutableCompletion(approved);
   skills[index] = approved;
   await persist(skills);
   return { ok: true, skill: approved };
@@ -98,6 +100,7 @@ export async function executeSkillVersion({ skillId, version, tabId, inputValues
   if (!response.ok || !response.skill) throw coded("SKILL_VERSION_NOT_FOUND", "That exact skill version could not be found.");
   const skill = response.skill;
   assertSkillExecutable(skill);
+  assertExecutableCompletion(skill);
 
   const run = {
     schemaVersion: 1,
@@ -254,6 +257,16 @@ async function mutateSkillRun(runId, mutate) {
 async function persist(skills) {
   const sorted = [...skills].sort(compareSkills).slice(0, MAX_SKILLS);
   await chrome.storage.local.set({ [SKILL_LIBRARY_KEY]: sorted });
+}
+
+function assertExecutableCompletion(skill) {
+  const last = Array.isArray(skill?.steps) ? skill.steps.at(-1) : null;
+  if (!last || last.kind !== "verify" || !last.expect || typeof last.expect !== "object" || Array.isArray(last.expect)) {
+    throw coded("SKILL_COMPLETION_CHECK_REQUIRED", "Add a final visible result check before approving or running this skill.");
+  }
+  const hasConcreteExpectation = ["visibleText", "urlIncludes", "role", "label", "state"].some((key) => typeof last.expect[key] === "string" && last.expect[key].trim());
+  if (!hasConcreteExpectation) throw coded("SKILL_COMPLETION_CHECK_REQUIRED", "The final result check needs a concrete page condition before this skill can run.");
+  return true;
 }
 
 function sanitizeRunEvent(event) {
