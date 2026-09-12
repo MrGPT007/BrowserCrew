@@ -172,7 +172,11 @@ function listen(server, state) {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
-      resolve({ origin: `http://127.0.0.1:${address.port}`, ...state, close: () => new Promise((done) => server.close(() => done())) });
+      resolve({
+        origin: `http://127.0.0.1:${address.port}`,
+        get chatRequests() { return state.chatRequests; },
+        close: () => new Promise((done) => server.close(() => done()))
+      });
     });
   });
 }
