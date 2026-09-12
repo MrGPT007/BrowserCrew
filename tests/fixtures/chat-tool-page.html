@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BrowserCrew Tool Fixture</title>
+</head>
+<body>
+  <main>
+    <h1>Quarterly operations note</h1>
+    <p>TOOL_VISIBLE_CANARY_71ac9: The warehouse ships on Tuesdays and Fridays.</p>
+    <p>Priority account: Northstar Retail.</p>
+    <input type="password" value="TOOL_PASSWORD_CANARY_9921" aria-label="Private password" />
+    <div hidden>TOOL_HIDDEN_CANARY_5512</div>
+  </main>
+  <script>
+    window.__browserCrewToolFixture = { reads: 0 };
+    const originalClone = document.body.cloneNode.bind(document.body);
+    document.body.cloneNode = (...args) => {
+      window.__browserCrewToolFixture.reads += 1;
+      return originalClone(...args);
+    };
+    window.__SCRIPT_CANARY = "TOOL_SCRIPT_CANARY_7733";
+  </script>
+</body>
+</html>
