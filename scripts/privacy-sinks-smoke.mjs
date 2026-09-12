@@ -190,7 +190,6 @@ async function configureProvider(panel, origin) {
 
 async function selectActivePage(panel, page, expectedTitle) {
   await page.bringToFront();
-  await panel.bringToFront();
   await panel.evaluate(() => document.querySelector("#selectTabButton")?.click());
   await waitForText(panel.locator("#selectedTabSummary"), expectedTitle);
 }
