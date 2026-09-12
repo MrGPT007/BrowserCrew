@@ -88,7 +88,7 @@ try {
   await panel.locator("#chatSendButton").click();
   await waitUntil(() => provider.requests.some((item) => item.body.stream === true && userText(item.body).includes("cancellation protocol test")), "Anthropic cancellation request did not reach fixture.");
   await panel.locator("#chatStopButton").waitFor({ state: "visible", timeout: timeoutMs });
-  await panel.locator("#chatStopButton").click();
+  await panel.evaluate(() => document.querySelector("#chatStopButton")?.click());
   await waitForText(panel.locator("#chatRunStatus"), "Stopped");
   await waitUntil(() => provider.abortedRequests >= 1, "AbortController cancellation did not close the Anthropic fixture request.");
   pass("Chat Stop propagated AbortController cancellation to the native Anthropic request");
