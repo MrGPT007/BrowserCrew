@@ -8,13 +8,15 @@ BrowserCrew must distinguish an implemented preset or compatible code path from 
 | OpenAI API preset | Implemented through OpenAI-compatible chat-completions request path | Static/runtime path covered; no live OpenAI credential is used in CI | **NOT CERTIFIED for v0.2 provider gate** |
 | LM Studio preset | Implemented with editable loopback OpenAI-compatible endpoint | Connection path is structurally covered by deterministic local endpoint; no pinned live LM Studio model/version evidence | **NOT CERTIFIED for v0.2 provider gate** |
 | Ollama preset | Implemented with editable loopback OpenAI-compatible endpoint | Connection path is structurally covered by deterministic local endpoint; no pinned live Ollama model/version evidence | **NOT CERTIFIED for v0.2 provider gate** |
-| Anthropic API | Not implemented | None | **BLOCKED / NOT CERTIFIED** |
+| Anthropic API | Implemented through the native Messages API adapter | Deterministic adapter contracts plus installed-Chromium protocol coverage exercise Messages auth/header shape, normal + streaming generation, tools, cancellation, usage, typed failures, timeout, session-only credentials, raw-error redaction, and hidden-thinking non-exposure | **NOT CERTIFIED for live v0.2 provider gate** |
 
-## What the current OpenAI-compatible path proves
+## What the current controlled provider paths prove
 
-The installed-extension suite proves BrowserCrew can persist non-secret provider settings, keep the supplied secret in session storage, request exact endpoint-origin permission, perform a connection request, issue bounded model requests for supported workflows, parse the expected response form, and surface failures through the extension runtime.
+The installed-extension suite proves BrowserCrew can persist non-secret provider settings, keep supplied secrets in session storage, request exact endpoint-origin permission, perform connection requests, issue bounded model requests for supported workflows, parse normalized responses, and surface safe failures through the extension runtime.
 
-That does not prove external service uptime, account entitlements, model-specific tool behavior, pricing, vision, or every OpenAI-compatible implementation.
+For Anthropic specifically, BrowserCrew keeps its existing normalized internal model/tool contract while the shared provider adapter translates only Anthropic-bound traffic to the native `/v1/messages` protocol. It sends the Anthropic API key only in the provider-specific request header, never exposes private thinking blocks to BrowserCrew UI/history, and keeps any thinking blocks required for a tool-result continuation only in short-lived in-memory adapter state.
+
+Controlled protocol evidence does not prove external service uptime, account entitlements, provider-side model behavior in production, pricing, vision, or every advertised deployment. It must not be presented as live-provider certification.
 
 ## v0.2 provider acceptance suite
 
@@ -24,4 +26,4 @@ Cloud providers require HTTPS. Plain HTTP is allowed only for explicit loopback 
 
 ## Public copy rule
 
-Until the gate is complete, UI/README wording may say BrowserCrew has presets or an OpenAI-compatible connection path, but must not say OpenAI, LM Studio, Ollama, or Anthropic are fully certified v0.2 providers. A deterministic mock/stub result is never a substitute for live-provider evidence.
+Until the live-provider gate is complete, UI/README wording may say BrowserCrew has OpenAI, Anthropic, LM Studio, and Ollama connection presets or compatible adapter paths, but must not say those external providers are fully certified for v0.2. A deterministic mock/stub result is never a substitute for live-provider evidence.
