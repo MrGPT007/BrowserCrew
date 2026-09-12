@@ -29,6 +29,7 @@
     "connections-smoke": "node scripts/connections-smoke.mjs",
     "attachments-smoke": "node scripts/attachments-smoke.mjs",
     "tools-smoke": "node scripts/tools-smoke.mjs",
+    "anthropic-smoke": "node scripts/anthropic-smoke.mjs",
     "mcp-smoke": "node scripts/mcp-smoke.mjs",
     "c5-smoke": "node scripts/c5-smoke.mjs",
     "workspace-stop-smoke": "node scripts/workspace-stop-smoke.mjs"
