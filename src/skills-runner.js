@@ -122,6 +122,28 @@ async function pageActionStep(step, tabId) {
         }
         return text(el).slice(0, 200) || String(el.getAttribute?.("placeholder") || "").trim();
       };
+      const clickSafety = (el) => {
+        const label = `${labelOf(el)} ${text(el)} ${el.getAttribute?.("name") || ""} ${el.id || ""}`.replace(/\s+/g, " ").trim();
+        if (/(?:delete|destroy|submit|send|save|publish|purchase|buy|pay|checkout|place\s+order|transfer|approve|confirm|unsubscribe|cancel\s+subscription)/i.test(label)) {
+          return { ok: false, code: "CLICK_REQUIRES_COMMIT_APPROVAL" };
+        }
+        if (el instanceof HTMLButtonElement) {
+          if ((el.type || "submit").toLowerCase() !== "button" || el.hasAttribute("formaction")) return { ok: false, code: "CLICK_REQUIRES_COMMIT_APPROVAL" };
+          return { ok: true };
+        }
+        if (el instanceof HTMLInputElement) {
+          const type = (el.type || "text").toLowerCase();
+          if (["button", "checkbox", "radio"].includes(type)) return { ok: true };
+          return { ok: false, code: "CLICK_REQUIRES_COMMIT_APPROVAL" };
+        }
+        if (el instanceof HTMLAnchorElement) {
+          if (el.hasAttribute("download")) return { ok: false, code: "CLICK_REQUIRES_DOWNLOAD_APPROVAL" };
+          const destination = new URL(el.href, location.href);
+          if (destination.origin !== location.origin) return { ok: false, code: "CLICK_LEAVES_APPROVED_SITE" };
+          return { ok: true };
+        }
+        return { ok: false, code: "CLICK_NOT_SAFE_TO_REPLAY" };
+      };
       let candidates = [...document.querySelectorAll("button,a,input,textarea,select,[role],[data-testid],[contenteditable='true']")].filter(visible);
       if (target.testId) candidates = candidates.filter((el) => el.getAttribute("data-testid") === target.testId);
       if (target.id) candidates = candidates.filter((el) => el.id === target.id);
@@ -132,6 +154,8 @@ async function pageActionStep(step, tabId) {
       if (candidates.length !== 1) return { ok: false, code: candidates.length ? "TARGET_AMBIGUOUS" : "TARGET_NOT_FOUND", count: candidates.length };
       const el = candidates[0];
       if (kind === "click") {
+        const safe = clickSafety(el);
+        if (!safe.ok) return safe;
         el.click();
       } else if (kind === "type") {
         if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el.isContentEditable)) return { ok: false, code: "TARGET_NOT_EDITABLE" };
@@ -234,6 +258,10 @@ function humanActionError(code) {
   if (code === "TARGET_NOT_EDITABLE") return "The saved field is no longer editable.";
   if (code === "TARGET_NOT_SELECTABLE") return "The saved choice control changed and can no longer be selected safely.";
   if (code === "OPTION_NOT_FOUND") return "The saved choice is no longer available on this page.";
+  if (code === "CLICK_REQUIRES_COMMIT_APPROVAL") return "This click can submit, save, send, pay, delete, approve, or otherwise commit work. Watch Me does not grant that authority, so BrowserCrew stopped for review.";
+  if (code === "CLICK_REQUIRES_DOWNLOAD_APPROVAL") return "This click starts a download. BrowserCrew stopped because downloads need their own reviewed permission and verification.";
+  if (code === "CLICK_LEAVES_APPROVED_SITE") return "This click would leave the reviewed site. BrowserCrew stopped before navigating to another origin.";
+  if (code === "CLICK_NOT_SAFE_TO_REPLAY") return "This custom control cannot be proven to be a non-commit interaction. BrowserCrew stopped instead of replaying it blindly.";
   return "The saved page action could not be completed safely.";
 }
 function coded(code, message) { const error = new Error(message); error.code = code; return error; }
