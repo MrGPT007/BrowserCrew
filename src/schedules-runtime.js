@@ -201,13 +201,17 @@ async function onAlarm(alarm) {
 
   const firedAt = Date.now();
   const scheduledTime = Number.isFinite(alarm.scheduledTime) ? alarm.scheduledTime : firedAt;
+  const scheduledFor = new Date(scheduledTime).toISOString();
+  const duplicate = (await listScheduleRuns(scheduleId)).find((run) => run.scheduledFor === scheduledFor);
+  if (duplicate) return;
+
   const missed = decideMissedRun(schedule, { scheduledTime, firedAt });
   const receipt = {
     id: crypto.randomUUID(),
     schemaVersion: 1,
     scheduleId,
     skillRef: schedule.skillRef,
-    scheduledFor: new Date(scheduledTime).toISOString(),
+    scheduledFor,
     firedAt: new Date(firedAt).toISOString(),
     latenessMs: missed.latenessMs,
     missed: missed.missed,
