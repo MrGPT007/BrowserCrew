@@ -170,10 +170,9 @@ async function observeTab(tabId, expectedUrl) {
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId },
     func: (maxChars) => {
-      const clone = document.body?.cloneNode(true);
-      if (!clone) return { title: document.title, url: location.href, text: "" };
-      clone.querySelectorAll("script,style,noscript,template,svg,canvas,iframe,input[type='password']").forEach((node) => node.remove());
-      const text = (clone.innerText || clone.textContent || "").replace(/\s+/g, " ").trim().slice(0, maxChars);
+      // Use the live rendered-text view. Detached clones can make hidden DOM fall back to textContent.
+      // innerText excludes non-rendered script/style/hidden content and does not expose password input values.
+      const text = String(document.body?.innerText || "").replace(/\u0000/g, "").replace(/\s+/g, " ").trim().slice(0, maxChars);
       return { title: document.title, url: location.href, text };
     },
     args: [MAX_PAGE_CHARS]
@@ -212,12 +211,15 @@ async function callOpenAICompatible(settings, secret, messages, options = {}) {
   const bodyText = await response.text();
   let body;
   try { body = JSON.parse(bodyText); } catch { body = null; }
-  if (!response.ok) {
-    const detail = body?.error?.message || `The AI service returned HTTP ${response.status}.`;
-    throw coded("PROVIDER_ERROR", detail);
-  }
+  if (!response.ok) throw coded("PROVIDER_ERROR", safeProviderErrorMessage(response.status));
   if (!body) throw coded("BAD_PROVIDER_JSON", "The AI service returned a response BrowserCrew could not read.");
   return body;
+}
+
+function safeProviderErrorMessage(status) {
+  if (status === 401 || status === 403) return "The AI service rejected the connection credentials. Check the key and account access, then try the connection test again.";
+  if (status === 429) return "The AI service is temporarily limiting requests. Wait a moment, then try again.";
+  return `The AI service returned HTTP ${status}. BrowserCrew did not copy the provider's error text into history.`;
 }
 
 function verifyExtraction(data, observation) {
