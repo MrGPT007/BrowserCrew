@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "release": "v0.2",
+  "submissionStatus": "prepared_not_submitted",
+  "singlePurpose": "BrowserCrew lets users run user-approved AI-assisted tasks on browser pages they choose, using AI services they configure, while keeping page access and browser actions under explicit user control.",
+  "listing": {
+    "name": "BrowserCrew",
+    "category": "Productivity",
+    "language": "en",
+    "shortDescription": "Run user-approved AI tasks on the browser pages you choose, using cloud or local models you configure.",
+    "supportUrlRequired": true,
+    "privacyPolicyUrlRequired": true
+  },
+  "manifestPermissions": [
+    {
+      "name": "sidePanel",
+      "justification": "Shows BrowserCrew's persistent task workspace beside the page the user is working on.",
+      "boundary": "The panel opens only when the user invokes BrowserCrew."
+    },
+    {
+      "name": "storage",
+      "justification": "Stores non-secret connection settings, task state, history, and machine-verifiable evidence in the extension profile; provider credentials use session storage instead of durable local storage.",
+      "boundary": "BrowserCrew does not use storage permission to access website cookies or arbitrary browser data."
+    },
+    {
+      "name": "activeTab",
+      "justification": "Lets BrowserCrew bind a task to the page the user is currently viewing before requesting any additional site access.",
+      "boundary": "It does not authorize unrelated tabs or background browsing."
+    },
+    {
+      "name": "scripting",
+      "justification": "Reads bounded visible page observations and performs explicitly approved page actions required by the selected browser task.",
+      "boundary": "Execution is limited by the selected-resource identity, site permission, workflow policy, stale-state checks, and approval checks."
+    },
+    {
+      "name": "tabs",
+      "justification": "Reads selected-tab identity, title, and URL and detects navigation so BrowserCrew can reject stale or changed resources.",
+      "boundary": "BrowserCrew does not use this permission to collect Chrome browsing history."
+    },
+    {
+      "name": "downloads",
+      "justification": "Starts user-selected invoice downloads and verifies Chrome reports the intended file as complete before BrowserCrew reports success.",
+      "boundary": "The bounded invoice workflow accepts only user-selected same-site invoice records and does not grant arbitrary filesystem reads."
+    }
+  ],
+  "optionalHostPermissions": [
+    {
+      "pattern": "https://*/*",
+      "justification": "Allows BrowserCrew to request an exact HTTPS origin at runtime only when the user selects a website, AI endpoint, or MCP endpoint that requires access.",
+      "grantModel": "optional_runtime_origin"
+    },
+    {
+      "pattern": "http://*/*",
+      "justification": "Allows runtime access to explicitly selected HTTP origins and local loopback AI/MCP services; BrowserCrew policy permits plain HTTP for local loopback AI and rejects unsafe cloud provider URLs.",
+      "grantModel": "optional_runtime_origin"
+    }
+  ],
+  "userData": {
+    "developerOperatedBackend": false,
+    "categories": [
+      {
+        "id": "website_content",
+        "handled": true,
+        "examples": "Visible text, page title, page URL, supported form fields, selected record values, and invoice metadata from pages the user selects.",
+        "purpose": "Complete the browser task the user requested and verify its result.",
+        "storage": "Only bounded task/evidence data needed for local task history; hidden text, password fields, script text, and unselected-tab content are excluded by tested privacy boundaries.",
+        "mayLeaveDevice": true,
+        "destinations": ["user_configured_ai_provider", "user_configured_mcp_server_when_explicitly_used"]
+      },
+      {
+        "id": "personal_communications",
+        "handled": true,
+        "examples": "Chat prompts, task instructions, and user-entered details supplied to BrowserCrew.",
+        "purpose": "Interpret and execute the user's requested AI-assisted browser task.",
+        "storage": "Task/history metadata can be stored locally when needed for the workflow; raw provider credentials are not stored here.",
+        "mayLeaveDevice": true,
+        "destinations": ["user_configured_ai_provider", "user_configured_mcp_server_when_explicitly_used"]
+      },
+      {
+        "id": "authentication_information",
+        "handled": true,
+        "examples": "API credentials the user enters for a configured AI connection.",
+        "purpose": "Authenticate requests directly to the AI service selected by the user.",
+        "storage": "chrome.storage.session only; privacy tests require provider secrets to be absent from durable local storage and evidence artifacts.",
+        "mayLeaveDevice": true,
+        "destinations": ["the_exact_user_configured_ai_provider"]
+      },
+      {
+        "id": "personally_identifiable_information",
+        "handled": true,
+        "examples": "Names, email addresses, phone numbers, or other details a user intentionally supplies for an approved form or attachment-backed task.",
+        "purpose": "Fill or reason about the user-requested task without inventing values.",
+        "storage": "Only when the selected workflow's local task/history needs the approved value; password fields are excluded.",
+        "mayLeaveDevice": true,
+        "destinations": ["user_configured_ai_provider_when_required", "the_user_selected_website_for_an_approved_write"]
+      },
+      {
+        "id": "financial_and_payment_information",
+        "handled": true,
+        "examples": "Invoice records or financial details visible in user-selected invoice/document workflows.",
+        "purpose": "Identify and collect the exact invoices or documents the user selected.",
+        "storage": "Bounded local task/download metadata and user-requested exported manifest files.",
+        "mayLeaveDevice": false,
+        "destinations": []
+      },
+      {
+        "id": "user_activity",
+        "handled": true,
+        "examples": "BrowserCrew task status, approvals, recovery state, selected-resource identity, and completion evidence.",
+        "purpose": "Show progress/history, enforce approvals, recover safely, and prevent duplicate or stale actions.",
+        "storage": "Local extension storage and user-requested evidence/export files.",
+        "mayLeaveDevice": false,
+        "destinations": []
+      }
+    ],
+    "notCollectedForDeveloper": [
+      "Chrome browsing history unrelated to a user-selected task",
+      "cookies",
+      "password fields",
+      "hidden page text",
+      "script text",
+      "unselected-tab content",
+      "advertising identifiers"
+    ],
+    "prohibitedUses": [
+      "sale of user data",
+      "personalized advertising",
+      "retargeting",
+      "unrelated analytics or profiling",
+      "human review of user content by the BrowserCrew developer except when separately requested by the user for support and lawfully permitted"
+    ]
+  },
+  "remoteCode": {
+    "used": false,
+    "statement": "BrowserCrew does not download or execute remote JavaScript or WebAssembly. AI and MCP responses are treated as data and remain behind BrowserCrew's local policy/tool boundaries."
+  },
+  "requiredStoreAssets": [
+    { "id": "icon_128_png", "required": true, "status": "missing", "spec": "128x128 PNG in the extension ZIP" },
+    { "id": "screenshot_1280x800", "required": true, "status": "missing", "spec": "At least one 1280x800 or 640x400 product screenshot; 1280x800 preferred" },
+    { "id": "small_promo_440x280", "required": true, "status": "missing", "spec": "440x280 PNG or JPEG" },
+    { "id": "youtube_video", "required": false, "status": "optional", "spec": "Optional/marketing video URL unless Dashboard requires it for the chosen listing flow" },
+    { "id": "marquee_1400x560", "required": false, "status": "optional", "spec": "1400x560 PNG or JPEG" }
+  ],
+  "externalSubmissionRequirements": [
+    "Chrome Web Store developer account with 2-step verification",
+    "Store listing fields completed in Developer Dashboard",
+    "Privacy practices fields completed and consistent with this contract and the public privacy policy",
+    "Public privacy policy URL",
+    "Support/contact information",
+    "Required graphic assets uploaded",
+    "Exact final candidate ZIP uploaded",
+    "Chrome Web Store review completed"
+  ]
+}
