@@ -39,7 +39,7 @@ function installConnectionUi() {
       <div class="card-heading"><div><p class="step-label">SAVED AI CONNECTIONS</p><h2>Keep more than one AI ready</h2></div><span class="badge" id="connectionCountBadge">0 saved</span></div>
       <p class="helper">A saved connection remembers the provider, model, and address. Secret keys stay in Chrome's session storage and are never copied into this list.</p>
       <label class="field-label" for="connectionNameInput">Name this connection</label>
-      <input id="connectionNameInput" type="text" maxlength="80" autocomplete="off" placeholder="Example: Local Qwen or Work OpenAI" />
+      <input id="connectionNameInput" type="text" maxlength="80" autocomplete="off" placeholder="Example: Local Qwen, Work OpenAI, or Work Claude" />
       <p class="helper">Use the provider, model, address, and optional key in the setup fields below. Then save and test this named connection.</p>
       <div class="button-row">
         <button class="button tactile" id="newConnectionButton" type="button">New connection</button>
@@ -152,7 +152,10 @@ function renderConnectionList() {
 
     const note = document.createElement("p");
     note.className = "connection-secret-note";
-    note.textContent = profile.kind === "openai" ? (profile.hasSecret ? "Secret key is available for this Chrome session." : "No secret key is available for this Chrome session.") : "Local connection · secret key usually not needed.";
+    const cloudKeyProvider = profile.kind === "openai" || profile.kind === "anthropic";
+    note.textContent = cloudKeyProvider
+      ? (profile.hasSecret ? "Secret key is available for this Chrome session." : "No secret key is available for this Chrome session.")
+      : "Local connection · secret key usually not needed.";
 
     const actions = document.createElement("div");
     actions.className = "connection-actions";
