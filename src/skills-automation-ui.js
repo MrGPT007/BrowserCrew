@@ -1,7 +1,10 @@
 const WATCH_PORT = "browsercrew-watch-control";
 const SKILLS_PORT = "browsercrew-skills";
+const SCHEDULES_PORT = "browsercrew-schedules";
 let watchState = null;
 let skillVersions = [];
+let scheduleRuns = [];
+let scheduleCapabilities = { alarmsAvailable: false, schedulerBooted: false };
 let watchPollTimer = null;
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -18,7 +21,7 @@ window.addEventListener("DOMContentLoaded", () => {
   fragment.append(createWatchCard(), createVersionedSkillsCard(), createSchedulesCard());
   heading.after(fragment);
   bindAutomationEvents();
-  Promise.all([refreshWatchState(), refreshSkillLibrary()]).catch(() => {});
+  Promise.all([refreshWatchState(), refreshSkillLibrary(), refreshScheduleReview()]).catch(() => {});
 });
 
 function createWatchCard() {
@@ -69,6 +72,10 @@ function createSchedulesCard() {
       <div><span>🔒</span><p><strong>No hidden authority:</strong> expired grants, changed pages, unavailable AI, or an already-running job block the scheduled run.</p></div>
       <div><span>💤</span><p><strong>If the computer sleeps:</strong> BrowserCrew cannot wake it. You choose whether a missed job is skipped, run once later, or waits for you.</p></div>
     </div>
+    <div class="selection-summary" id="scheduleCapabilityStatus" aria-live="polite">Scheduling is not active in this build.</div>
+    <div class="card-heading"><div><p class="step-label">NEEDS YOUR CHOICE</p><h3>Missed jobs waiting for you</h3></div><span class="badge" id="scheduleReviewCount">0</span></div>
+    <p class="helper">If you chose “Ask me” for a missed job, BrowserCrew waits here. Nothing runs until you choose what to do.</p>
+    <div id="scheduleReviewList"><div class="empty">No missed scheduled jobs need your choice.</div></div>
     <button class="button tactile full" id="scheduleSetupButton" type="button" disabled>Schedule setup unlocks after the v0.2 release is frozen</button>`;
   return card;
 }
@@ -78,6 +85,7 @@ function bindAutomationEvents() {
   document.querySelector("#watchMePauseButton")?.addEventListener("click", toggleWatchPause);
   document.querySelector("#watchMeStopButton")?.addEventListener("click", stopWatchMe);
   document.querySelector("#versionedSkillList")?.addEventListener("click", onSkillAction);
+  document.querySelector("#scheduleReviewList")?.addEventListener("click", onScheduleReviewAction);
 }
 
 async function startWatchMe() {
@@ -248,6 +256,84 @@ async function onSkillAction(event) {
   if (!response.ok) announce(response.error?.message || "BrowserCrew could not approve this skill.");
   else announce("Skill version approved. Permissions are still checked when it runs.");
   await refreshSkillLibrary();
+}
+
+async function refreshScheduleReview() {
+  const list = document.querySelector("#scheduleReviewList");
+  try {
+    const [capabilities, runs] = await Promise.all([
+      portRequest(SCHEDULES_PORT, { type: "capabilities" }),
+      portRequest(SCHEDULES_PORT, { type: "listRuns" })
+    ]);
+    if (!capabilities.ok) throw new Error(capabilities.error?.message || "Could not check scheduling availability.");
+    if (!runs.ok) throw new Error(runs.error?.message || "Could not load scheduled job history.");
+    scheduleCapabilities = { alarmsAvailable: capabilities.alarmsAvailable === true, schedulerBooted: capabilities.schedulerBooted === true };
+    scheduleRuns = runs.runs || [];
+    renderScheduleReview();
+  } catch (error) {
+    if (list) list.innerHTML = `<div class="empty">${escapeHtml(error.message || "Could not load missed scheduled jobs.")}</div>`;
+  }
+}
+
+function renderScheduleReview() {
+  const list = document.querySelector("#scheduleReviewList");
+  const count = document.querySelector("#scheduleReviewCount");
+  const status = document.querySelector("#scheduleCapabilityStatus");
+  if (!list || !count || !status) return;
+
+  if (scheduleCapabilities.schedulerBooted) status.textContent = "Scheduling is active. Every run still rechecks permissions, provider availability, and page freshness.";
+  else status.textContent = "Scheduling is not active in this build. You can review stored missed-job choices, but BrowserCrew will not start a scheduled run yet.";
+
+  const pending = scheduleRuns.filter((run) => run.status === "needs_review");
+  count.textContent = String(pending.length);
+  if (!pending.length) {
+    list.innerHTML = `<div class="empty">No missed scheduled jobs need your choice.</div>`;
+    return;
+  }
+
+  list.innerHTML = pending.map((run) => {
+    const scheduled = formatScheduleTime(run.scheduledFor || run.firedAt);
+    const lateMinutes = Math.max(0, Math.round(Number(run.latenessMs || 0) / 60_000));
+    return `<article class="skill-card" data-schedule-review-card="${escapeAttr(run.id)}">
+      <div><strong>${escapeHtml(run.scheduleId || "Scheduled job")}</strong><p>Missed ${escapeHtml(scheduled)}${lateMinutes ? ` · ${escapeHtml(String(lateMinutes))} min late` : ""}. BrowserCrew is waiting for your choice.</p><small>Nothing has been dispatched for this missed occurrence.</small></div>
+      <div class="skill-actions">
+        <button class="button button-small button-primary tactile" type="button" data-review-missed="${escapeAttr(run.id)}" data-review-decision="run_once">Run this missed job once</button>
+        <button class="button button-small tactile" type="button" data-review-missed="${escapeAttr(run.id)}" data-review-decision="skip">Skip this missed job</button>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+async function onScheduleReviewAction(event) {
+  const button = event.target.closest("[data-review-missed]");
+  if (!button) return;
+  const decision = button.dataset.reviewDecision;
+  const runId = button.dataset.reviewMissed;
+  if (decision === "run_once" && !confirm("Run this missed job once? BrowserCrew will recheck its permissions, provider, page, and safety limits before it can start.")) return;
+  busy(button, true, decision === "skip" ? "Skipping…" : "Checking…");
+  try {
+    const response = await portRequest(SCHEDULES_PORT, { type: "reviewMissed", runId, decision });
+    if (!response.ok) {
+      announce(response.error?.message || "BrowserCrew could not apply that missed-job choice.");
+    } else if (decision === "skip") {
+      announce("Missed job skipped. Nothing was dispatched.");
+    } else if (response.queued) {
+      announce("One missed run is queued. BrowserCrew will recheck it after the current run finishes.");
+    } else {
+      announce("Missed job finished after a fresh safety check.");
+    }
+  } catch (error) {
+    announce(error.message || "BrowserCrew could not apply that missed-job choice.");
+  } finally {
+    busy(button, false, decision === "skip" ? "Skip this missed job" : "Run this missed job once");
+    await refreshScheduleReview();
+  }
+}
+
+function formatScheduleTime(value) {
+  const date = new Date(value || "");
+  if (!Number.isFinite(date.getTime())) return "at its saved time";
+  return date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
 function portRequest(portName, payload) {
