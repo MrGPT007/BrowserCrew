@@ -38,6 +38,8 @@ jobs:
         run: npm run browser-smoke
       - name: Run V02-B01 W1/W3 adversarial installed-extension smoke test
         run: npm run w1-w3-adversarial-smoke
+      - name: Run V02-B01 W2/W4/W5 adversarial installed-extension smoke test
+        run: npm run w2-w4-w5-adversarial-smoke
       - name: Run W2 directory installed-extension smoke test
         run: npm run directory-smoke
       - name: Run W4 record-update installed-extension smoke test
