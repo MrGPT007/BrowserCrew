@@ -12,3 +12,4 @@ import "./invoice-ui.js";
 import "./workspace-stop-ui.js";
 import "./workspace-ui-core.js";
 import "./directory-mode-bridge.js";
+import "./accessibility-ui.js";
