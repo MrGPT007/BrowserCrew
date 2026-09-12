@@ -77,8 +77,18 @@ if (!workflow.includes("npm run privacy-smoke")) throw new Error("Quality CI mus
 if (!workflow.includes("npm run privacy-sinks-smoke")) throw new Error("Quality CI must execute v0.2 privacy sink browser coverage.");
 
 const evidence = await readFile("docs/RELEASE-EVIDENCE-v0.2.md", "utf8");
-if (!evidence.includes("| Privacy | **Partial**")) throw new Error("Release evidence must remain partial until the new sink evidence is green on an exact PR head.");
-if (!evidence.includes("V02-B02")) throw new Error("V02-B02 must remain open until the new sink evidence is green and the release ledger is reconciled.");
-if (!evidence.includes("provider-error echo")) throw new Error("Release evidence must still name provider-error echo as remaining work before proof exists.");
+for (const contract of [
+  "| Privacy | **Passed**",
+  "`V02-B02` — **Resolved",
+  "ae6db27ef3978ef306f5043a7b33c35f66b32bea",
+  "34696981584",
+  "103562856804",
+  "10299102917",
+  "sha256:395986617d3c88c15860b110d4ec8f763c8edaeb395713c8b30fcd91792b9592",
+  "Status: **NOT READY FOR v0.2 RELEASE**"
+]) {
+  if (!evidence.includes(contract)) throw new Error(`Release evidence is missing privacy proof contract: ${contract}`);
+}
+if (evidence.includes("| Privacy | **Partial**")) throw new Error("Privacy must not remain marked partial after exact-head sink proof passed.");
 
 console.log("BrowserCrew v0.2 privacy gate contract checks passed.");
