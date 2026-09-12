@@ -36,6 +36,8 @@ jobs:
         run: npm run invoice-smoke
       - name: Run seeded privacy installed-extension smoke test
         run: npm run privacy-smoke
+      - name: Run v0.2 privacy sink installed-extension smoke test
+        run: npm run privacy-sinks-smoke
       - name: Run C1 Chat installed-extension smoke test
         run: npm run chat-smoke
       - name: Run C2 named AI-connection installed-extension smoke test

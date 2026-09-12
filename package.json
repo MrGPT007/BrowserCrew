@@ -19,6 +19,7 @@
     "record-smoke": "node scripts/record-smoke.mjs",
     "invoice-smoke": "node scripts/invoice-smoke.mjs",
     "privacy-smoke": "node scripts/privacy-smoke.mjs",
+    "privacy-sinks-smoke": "node scripts/privacy-sinks-smoke.mjs",
     "chat-smoke": "node scripts/chat-smoke.mjs",
     "connections-smoke": "node scripts/connections-smoke.mjs",
     "attachments-smoke": "node scripts/attachments-smoke.mjs",
