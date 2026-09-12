@@ -53,8 +53,9 @@ try {
 
   await target.bringToFront();
   await panel.evaluate(() => document.querySelector("#watchMeStartButton")?.click());
-  await waitForText(panel.locator("#watchMeStatus"), "Watching");
-  assert.match(await panel.locator("#watchMeBadge").innerText(), /Watching/i);
+  await panel.locator("#watchMeRunning").waitFor({ state: "visible", timeout: timeoutMs });
+  await waitForText(panel.locator("#watchMeBadge"), "Watching");
+  assert.match(await panel.locator("#watchMeStatus").innerText(), /Watching/i);
   pass("Watch me do it started only for the user-selected active fixture page");
 
   await target.locator("#email").fill(LITERALS.email);
