@@ -4,6 +4,7 @@ import "./chat-tools-ui.js";
 import "./mcp-ui.js";
 import "./chat-provider-status.js";
 import "./connections-ui.js";
+import "./chat-c5-ui.js";
 import "./directory-ui.js";
 import "./record-ui.js";
 import "./invoice-ui.js";

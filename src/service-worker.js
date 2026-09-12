@@ -1,5 +1,6 @@
 import "./connections-startup.js";
 import "./connections-runtime.js";
+import "./chat-c5-runtime.js";
 import "./mcp-runtime.js";
 import "./chat-tools-runtime.js";
 import "./chat-attachments-runtime.js";

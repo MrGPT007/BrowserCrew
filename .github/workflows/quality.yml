@@ -46,6 +46,8 @@ jobs:
         run: npm run tools-smoke
       - name: Run C4 MCP installed-extension smoke test
         run: npm run mcp-smoke
+      - name: Run AGT-01 C5 bounded compare and handoff smoke test
+        run: npm run c5-smoke
       - name: Upload browser smoke evidence
         if: always()
         uses: actions/upload-artifact@v4
