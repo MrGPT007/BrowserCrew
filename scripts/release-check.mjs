@@ -51,7 +51,7 @@ const workflowMatrix = await readFile("docs/SUPPORTED-WORKFLOWS.md", "utf8");
 for (const workflow of ["W1 · Compare suppliers", "W2 · Extract directory", "W3 · Prepare inquiry form", "W4 · Update one record", "W5 · Collect invoices"]) {
   if (!workflowMatrix.includes(workflow)) throw new Error(`Supported-workflow matrix is missing ${workflow}.`);
 }
-if (!workflowMatrix.includes("does **not** submit the form")) throw new Error("W3 support boundary must explicitly say it does not submit the form.");
+if (!workflowMatrix.includes("Does **not** submit the form")) throw new Error("W3 support boundary must explicitly say it does not submit the form.");
 
 const manifest = JSON.parse(await readFile("manifest.json", "utf8"));
 const permissions = await readFile("docs/PERMISSIONS.md", "utf8");
