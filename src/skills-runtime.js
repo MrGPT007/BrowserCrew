@@ -1,15 +1,21 @@
 import { assertSkillExecutable, promoteSkillDraft, validateSkill } from "./skills-contract.js";
+import { runApprovedSkill } from "./skills-runner.js";
 
 const SKILL_LIBRARY_KEY = "browsercrew.skillLibrary.v1";
 const LEGACY_SKILLS_KEY = "browsercrew.skills.v1";
+const SKILL_RUNS_KEY = "browsercrew.skillRuns.v1";
 const SKILLS_PORT = "browsercrew-skills";
 const MAX_SKILLS = 100;
+const MAX_SKILL_RUNS = 100;
+const activeSkillRuns = new Map();
+
+reconcileInterruptedSkillRuns().catch(() => {});
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== SKILLS_PORT) return;
   port.onMessage.addListener((message) => {
     handleSkillMessage(message).then((result) => port.postMessage({ requestId: message?.requestId, ...result })).catch((error) => {
-      port.postMessage({ requestId: message?.requestId, ok: false, error: { code: error?.code || "SKILL_LIBRARY_ERROR", message: error?.message || "BrowserCrew could not update this skill." } });
+      port.postMessage({ requestId: message?.requestId, ok: false, error: safeError(error), run: error?.run || null });
     });
   });
 });
@@ -23,6 +29,9 @@ async function handleSkillMessage(message) {
     case "deleteDraft": return deleteDraft(message.skillId, message.version);
     case "get": return getSkillVersion(message.skillId, message.version);
     case "migrateLegacy": return migrateLegacySkills();
+    case "run": return executeSkillVersion(message);
+    case "stopRun": return stopSkillRun(message.runId);
+    case "listRuns": return { ok: true, runs: await listSkillRuns() };
     default: return { ok: false, error: { code: "UNKNOWN_SKILL_REQUEST", message: "BrowserCrew received an unknown skill request." } };
   }
 }
@@ -84,6 +93,78 @@ export async function deleteDraft(skillId, version) {
   return { ok: true };
 }
 
+export async function executeSkillVersion({ skillId, version, tabId, inputValues = {}, grant = null } = {}) {
+  const response = await getSkillVersion(skillId, version);
+  if (!response.ok || !response.skill) throw coded("SKILL_VERSION_NOT_FOUND", "That exact skill version could not be found.");
+  const skill = response.skill;
+  assertSkillExecutable(skill);
+
+  const run = {
+    schemaVersion: 1,
+    id: crypto.randomUUID(),
+    skillRef: { id: skill.id, version: skill.version },
+    tabId,
+    status: "running",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    events: [],
+    receipt: null,
+    error: null
+  };
+  await upsertSkillRun(run);
+
+  const controller = new AbortController();
+  activeSkillRuns.set(run.id, controller);
+  try {
+    const result = await runApprovedSkill({
+      skill,
+      inputValues,
+      tabId,
+      grant,
+      signal: controller.signal,
+      onEvent: async (event) => appendSkillRunEvent(run.id, event)
+    });
+    const completed = await mutateSkillRun(run.id, (item) => {
+      item.status = "completed";
+      item.receipt = result.receipt;
+      item.completedAt = new Date().toISOString();
+      item.error = null;
+    });
+    return { ok: true, run: completed };
+  } catch (error) {
+    const stopped = error?.code === "SKILL_RUN_STOPPED";
+    const failed = await mutateSkillRun(run.id, (item) => {
+      item.status = stopped ? "cancelled" : "failed";
+      item.completedAt = new Date().toISOString();
+      item.error = safeError(error);
+      if (error?.receipt) item.receipt = error.receipt;
+    });
+    return { ok: false, run: failed, error: safeError(error) };
+  } finally {
+    activeSkillRuns.delete(run.id);
+  }
+}
+
+export async function stopSkillRun(runId) {
+  if (!runId) throw coded("SKILL_RUN_ID_REQUIRED", "Choose the skill run you want to stop.");
+  const controller = activeSkillRuns.get(runId);
+  if (!controller) {
+    const existing = (await listSkillRuns()).find((item) => item.id === runId);
+    if (!existing) throw coded("SKILL_RUN_NOT_FOUND", "That skill run could not be found.");
+    return { ok: true, run: existing, alreadySettled: existing.status !== "running" };
+  }
+  controller.abort();
+  const run = await mutateSkillRun(runId, (item) => {
+    item.stopRequestedAt = new Date().toISOString();
+  });
+  return { ok: true, run, stopRequested: true };
+}
+
+export async function listSkillRuns() {
+  const data = await chrome.storage.local.get(SKILL_RUNS_KEY);
+  return Array.isArray(data[SKILL_RUNS_KEY]) ? data[SKILL_RUNS_KEY] : [];
+}
+
 export async function migrateLegacySkills() {
   const data = await chrome.storage.local.get([LEGACY_SKILLS_KEY, SKILL_LIBRARY_KEY]);
   const legacy = Array.isArray(data[LEGACY_SKILLS_KEY]) ? data[LEGACY_SKILLS_KEY] : [];
@@ -131,9 +212,56 @@ export async function migrateLegacySkills() {
   return { ok: true, migratedCount: migrated.length, skills: migrated };
 }
 
+async function appendSkillRunEvent(runId, event) {
+  return mutateSkillRun(runId, (run) => {
+    run.events.push({ id: crypto.randomUUID(), at: new Date().toISOString(), ...sanitizeRunEvent(event) });
+    run.events = run.events.slice(-250);
+  });
+}
+
+async function reconcileInterruptedSkillRuns() {
+  const runs = await listSkillRuns();
+  let changed = false;
+  for (const run of runs) {
+    if (run.status !== "running") continue;
+    run.status = "paused";
+    run.updatedAt = new Date().toISOString();
+    run.error = { code: "SKILL_WORKER_RESTARTED", message: "Chrome restarted BrowserCrew during this skill run. The run was paused and will not replay an uncertain step automatically." };
+    changed = true;
+  }
+  if (changed) await chrome.storage.local.set({ [SKILL_RUNS_KEY]: runs.slice(0, MAX_SKILL_RUNS) });
+}
+
+async function upsertSkillRun(run) {
+  const runs = await listSkillRuns();
+  const index = runs.findIndex((item) => item.id === run.id);
+  if (index >= 0) runs[index] = run;
+  else runs.unshift(run);
+  await chrome.storage.local.set({ [SKILL_RUNS_KEY]: runs.slice(0, MAX_SKILL_RUNS) });
+  return run;
+}
+
+async function mutateSkillRun(runId, mutate) {
+  const runs = await listSkillRuns();
+  const index = runs.findIndex((item) => item.id === runId);
+  if (index < 0) throw coded("SKILL_RUN_NOT_FOUND", "That skill run could not be found.");
+  mutate(runs[index]);
+  runs[index].updatedAt = new Date().toISOString();
+  await chrome.storage.local.set({ [SKILL_RUNS_KEY]: runs.slice(0, MAX_SKILL_RUNS) });
+  return runs[index];
+}
+
 async function persist(skills) {
   const sorted = [...skills].sort(compareSkills).slice(0, MAX_SKILLS);
   await chrome.storage.local.set({ [SKILL_LIBRARY_KEY]: sorted });
+}
+
+function sanitizeRunEvent(event) {
+  const copy = structuredClone(event || {});
+  delete copy.value;
+  delete copy.inputValues;
+  delete copy.secret;
+  return copy;
 }
 
 function compareSkills(a, b) {
@@ -146,4 +274,5 @@ function slug(name, fallback) {
   return `${base}-${suffix}`;
 }
 
+function safeError(error) { return { code: error?.code || "SKILL_LIBRARY_ERROR", message: error?.message || "BrowserCrew could not update this skill." }; }
 function coded(code, message) { const error = new Error(message); error.code = code; return error; }
