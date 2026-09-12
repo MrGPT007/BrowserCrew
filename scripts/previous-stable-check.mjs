@@ -56,7 +56,15 @@ if (pkg.scripts?.["previous-stable-smoke"] !== "node scripts/previous-stable-run
 if (!String(pkg.scripts?.check || "").includes("previous-stable-check.mjs")) throw new Error("npm run check must include previous-stable contracts.");
 
 const evidence = await readFile("docs/RELEASE-EVIDENCE-v0.2.md", "utf8");
-if (!evidence.includes("V02-B06")) throw new Error("Release ledger must retain the V02-B06 browser-coverage gate.");
-if (!evidence.includes("Browser compatibility | **Candidate**")) throw new Error("Release ledger must keep browser compatibility as a candidate until exact-head Chrome 152 evidence is green.");
+for (const phrase of [
+  "Browser compatibility | **Passed**",
+  "PR #39",
+  "c2f84ad2fe2ac15199a2bb878c83a1bae76e95ba",
+  "34706114178",
+  "92ddd0546caedfdf8bc09b14c6d50e87c0ca432c",
+  "34706787383",
+  "10302206254",
+  "sha256:ffbbceca201a968f030511395c94753c17401448e5f438aced458472fce0a879"
+]) if (!evidence.includes(phrase)) throw new Error(`Resolved V02-B06 release evidence missing: ${phrase}`);
 
 console.log("BrowserCrew V02-B06 previous-stable Chrome contracts passed.");
