@@ -13,4 +13,5 @@ import "./record-write.js";
 import "./invoice-download.js";
 import "./skills-runtime.js";
 import "./watch-me-runtime.js";
+import "./schedules-runtime.js";
 import "./background.js";
