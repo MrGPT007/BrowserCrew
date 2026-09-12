@@ -3,6 +3,7 @@ import "./chat-attachments-ui.js";
 import "./chat-tools-ui.js";
 import "./mcp-ui.js";
 import "./chat-provider-status.js";
+import "./anthropic-ui.js";
 import "./connections-ui.js";
 import "./chat-c5-ui.js";
 import "./directory-ui.js";
