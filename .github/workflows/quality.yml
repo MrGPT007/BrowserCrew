@@ -13,6 +13,31 @@ jobs:
           node-version: 24
       - run: npm run check
 
+  release-matrix:
+    needs: static-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install locked browser test dependencies
+        run: npm ci --ignore-scripts
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run V02-B01 75-attempt release matrix
+        run: npm run release-matrix-smoke
+      - name: Upload V02-B01 release-matrix evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-matrix-evidence
+          path: artifacts/release-matrix
+          if-no-files-found: error
+
   browser-smoke:
     needs: static-checks
     runs-on: ubuntu-latest
