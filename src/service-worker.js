@@ -1,3 +1,4 @@
+import "./connections-startup.js";
 import "./connections-runtime.js";
 import "./chat-runtime.js";
 import "./form-write.js";
