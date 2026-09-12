@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node scripts/check.mjs && node scripts/directory-check.mjs && node scripts/record-check.mjs && node scripts/invoice-check.mjs",
+    "check": "node scripts/check.mjs && node scripts/directory-check.mjs && node scripts/record-check.mjs && node scripts/invoice-check.mjs && node scripts/release-check.mjs",
+    "release-check": "node scripts/release-check.mjs",
     "browser-smoke": "node scripts/browser-smoke.mjs",
     "directory-smoke": "node scripts/directory-smoke.mjs",
     "record-smoke": "node scripts/record-smoke.mjs",
