@@ -32,6 +32,9 @@ async function handleScheduleMessage(message) {
   switch (message?.type) {
     case "capabilities": return { ok: true, alarmsAvailable: Boolean(chrome.alarms?.create), schedulerBooted: booted };
     case "list": return { ok: true, schedules: await listSchedules() };
+    case "saveDraft": return saveSchedule({ ...(message.schedule || {}), enabled: false });
+    case "setEnabled": return setScheduleEnabled(message.scheduleId, message.enabled);
+    case "delete": return deleteSchedule(message.scheduleId);
     case "listRuns": return { ok: true, runs: await listScheduleRuns(message.scheduleId || null) };
     case "reviewMissed": return reviewMissedScheduleRun(message.runId, message.decision);
     default: return { ok: false, error: { code: "UNKNOWN_SCHEDULE_REQUEST", message: "BrowserCrew received an unknown schedule request." } };
@@ -56,10 +59,11 @@ export async function listSchedules() {
 }
 
 export async function saveSchedule(input) {
-  requireAlarmsApi();
   const schedule = structuredClone(input || {});
   const validation = validateSchedule(schedule);
   if (!validation.ok) throw coded("SCHEDULE_INVALID", validation.errors.join(" "));
+  if (schedule.enabled) requireAlarmsApi();
+
   const skillResult = await getSkillVersion(schedule.skillRef.id, schedule.skillRef.version);
   if (!skillResult.ok) throw coded("SCHEDULE_SKILL_NOT_FOUND", "Choose an existing approved skill version before saving this schedule.");
   assertScheduleDispatchable({ ...schedule, enabled: true }, skillResult.skill, {
@@ -84,11 +88,12 @@ export async function saveSchedule(input) {
 }
 
 export async function setScheduleEnabled(scheduleId, enabled) {
-  requireAlarmsApi();
+  const desired = Boolean(enabled);
+  if (desired) requireAlarmsApi();
   const schedules = await listSchedules();
   const index = schedules.findIndex((item) => item.id === scheduleId);
   if (index < 0) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
-  const schedule = { ...schedules[index], enabled: Boolean(enabled), updatedAt: new Date().toISOString() };
+  const schedule = { ...schedules[index], enabled: desired, updatedAt: new Date().toISOString() };
   schedule.nextRunAt = schedule.enabled ? new Date(nextRun(schedule)).toISOString() : null;
   schedules[index] = schedule;
   await persistSchedules(schedules);
@@ -97,12 +102,11 @@ export async function setScheduleEnabled(scheduleId, enabled) {
 }
 
 export async function deleteSchedule(scheduleId) {
-  requireAlarmsApi();
   const schedules = await listSchedules();
   const next = schedules.filter((item) => item.id !== scheduleId);
   if (next.length === schedules.length) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
   await persistSchedules(next);
-  await chrome.alarms.clear(alarmName(scheduleId));
+  if (chrome.alarms?.clear) await chrome.alarms.clear(alarmName(scheduleId));
   return { ok: true };
 }
 
@@ -179,8 +183,12 @@ export async function reconcileScheduleAlarms() {
 
 async function syncOneAlarm(schedule) {
   const name = alarmName(schedule.id);
+  if (!schedule.enabled) {
+    if (chrome.alarms?.clear) await chrome.alarms.clear(name);
+    return;
+  }
+  requireAlarmsApi();
   await chrome.alarms.clear(name);
-  if (!schedule.enabled) return;
   await chrome.alarms.create(name, toChromeAlarmSpec(schedule));
 }
 
@@ -308,27 +316,13 @@ async function drainQueuedRun(scheduleId) {
   receipt.dequeuedAt = new Date().toISOString();
   await updateRunReceipt(receipt);
 
-  // A queued occurrence was already accepted while the schedule was enabled.
-  // One-time schedules auto-disable after their alarm is consumed, so permit
-  // only that already-accepted occurrence to finish. Recurring schedules must
-  // still be enabled when the queue drains.
   const acceptedSchedule = schedule.recurrence.kind === "once" ? { ...schedule, enabled: true } : schedule;
   await dispatchReceipt(acceptedSchedule, receipt);
-
-  // At most one receipt can be queued at a time, but run another drain check in
-  // case a new alarm arrived while this queued occurrence was executing.
   await drainQueuedRun(scheduleId);
 }
 
 async function resolveDispatchContext(schedule, skill, activeRun) {
-  // The actual dispatcher supplies live grant/provider/resource checks. These
-  // defaults deliberately fail closed for any context that cannot be proven.
-  const result = await dispatchScheduledRun({
-    mode: "preflight",
-    schedule,
-    skill,
-    activeRun
-  });
+  const result = await dispatchScheduledRun({ mode: "preflight", schedule, skill, activeRun });
   return {
     activeRun,
     grantsValid: result?.grantsValid === true,
