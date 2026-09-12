@@ -1,0 +1,101 @@
+.chat-tools-card {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-tool-choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 2px solid var(--border, #171717);
+  border-radius: 12px;
+  background: var(--surface, #fffdf8);
+  box-shadow: 3px 3px 0 var(--shadow, #171717);
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.chat-tool-choice:hover {
+  transform: translate(1.5px, 1.5px);
+  box-shadow: 1.5px 1.5px 0 var(--shadow, #171717);
+}
+
+.chat-tool-choice:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--shadow, #171717);
+}
+
+.chat-tool-choice input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+}
+
+.chat-tool-choice span {
+  display: grid;
+  gap: 3px;
+}
+
+.chat-tool-choice small,
+.chat-inline-tool-card small,
+.chat-tool-grant-summary span {
+  color: var(--muted, #555);
+  line-height: 1.35;
+}
+
+.chat-tool-grant-summary {
+  padding: 10px 12px;
+  border: 2px solid var(--border, #171717);
+  border-radius: 10px;
+  background: var(--mint, #9be3bd);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.chat-inline-tool-stack {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.chat-inline-tool-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 2px solid var(--border, #171717);
+  border-radius: 10px;
+  background: var(--surface, #fffdf8);
+  box-shadow: 2px 2px 0 var(--shadow, #171717);
+}
+
+.chat-inline-tool-card p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.chat-inline-tool-authorized {
+  background: color-mix(in srgb, var(--mint, #9be3bd) 35%, var(--surface, #fffdf8));
+}
+
+.chat-inline-tool-completed {
+  background: color-mix(in srgb, var(--blue, #86b6ff) 30%, var(--surface, #fffdf8));
+}
+
+.chat-inline-tool-verification {
+  background: color-mix(in srgb, var(--yellow, #f4dc78) 30%, var(--surface, #fffdf8));
+}
+
+@media (max-width: 390px) {
+  .chat-tool-choice {
+    gap: 8px;
+    padding: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-tool-choice {
+    transition: none;
+  }
+}
