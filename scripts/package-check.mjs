@@ -99,7 +99,18 @@ if (!workflow.includes("path: artifacts")) throw new Error("Existing browser evi
 if (!workflow.includes("path: dist")) throw new Error("Quality CI must upload package receipts and the candidate artifact.");
 
 const evidence = await readFile("docs/RELEASE-EVIDENCE-v0.2.md", "utf8");
-if (!evidence.includes("| Package integrity | **Partial**")) throw new Error("Package integrity must remain Partial until exact-head package and rollback evidence is green.");
-if (!evidence.includes("V02-B07")) throw new Error("V02-B07 must remain tracked until exact-head package/rollback proof is green and the release ledger is reconciled.");
+for (const contract of [
+  "| Package integrity | **Passed**",
+  "`V02-B07` — **Resolved",
+  "f673eb9454ea5d3f4879324b30bd7a30e0742d24",
+  "34699275822",
+  "103570478651",
+  "e87dcaff80dca8515ac95f44e7213e86b13d92afd45b4d26e20e5baf35066bdb",
+  "44258cf77c651e31597d7d486cf98ed9e5c812ac3615dbf6185af24be3b5f174",
+  "10300032262",
+  "10299887560"
+]) {
+  if (!evidence.includes(contract)) throw new Error(`Release evidence is missing certified package proof: ${contract}`);
+}
 
 console.log("BrowserCrew v0.2 package-integrity contract checks passed.");
