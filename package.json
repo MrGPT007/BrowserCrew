@@ -64,7 +64,7 @@
     "workspace-stop-smoke": "node scripts/workspace-stop-smoke.mjs",
     "w1-w3-adversarial-smoke": "node scripts/w1-w3-adversarial-smoke.mjs",
     "w2-w4-w5-adversarial-smoke": "node scripts/w2-w4-w5-adversarial-smoke.mjs",
-    "store-media-smoke": "node scripts/store-media-smoke.mjs",
+    "store-media-smoke": "node scripts/store-media-smoke.mjs && node scripts/store-assets-smoke.mjs",
     "watch-me-smoke": "node scripts/watch-me-smoke.mjs",
     "watch-me-resilience-smoke": "node scripts/watch-me-resilience-smoke.mjs && node scripts/watch-me-event-trust-smoke.mjs",
     "watch-me-event-trust-smoke": "node scripts/watch-me-event-trust-smoke.mjs",

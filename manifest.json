@@ -8,12 +8,24 @@
     "https://*/*",
     "http://*/*"
   ],
+  "icons": {
+    "16": "src/assets/icons/browsercrew-16.png",
+    "32": "src/assets/icons/browsercrew-32.png",
+    "48": "src/assets/icons/browsercrew-48.png",
+    "128": "src/assets/icons/browsercrew-128.png"
+  },
   "background": {
     "service_worker": "src/service-worker.js",
     "type": "module"
   },
   "action": {
-    "default_title": "Open BrowserCrew"
+    "default_title": "Open BrowserCrew",
+    "default_icon": {
+      "16": "src/assets/icons/browsercrew-16.png",
+      "32": "src/assets/icons/browsercrew-32.png",
+      "48": "src/assets/icons/browsercrew-48.png",
+      "128": "src/assets/icons/browsercrew-128.png"
+    }
   },
   "side_panel": {
     "default_path": "sidepanel.html"

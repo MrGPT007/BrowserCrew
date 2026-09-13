@@ -9,7 +9,9 @@
     "language": "en",
     "shortDescription": "Run user-approved AI tasks on the browser pages you choose, using cloud or local models you configure.",
     "supportUrlRequired": true,
-    "privacyPolicyUrlRequired": true
+    "supportUrl": "https://github.com/MrGPT007/BrowserCrew/issues",
+    "privacyPolicyUrlRequired": true,
+    "privacyPolicyUrl": "https://github.com/MrGPT007/BrowserCrew/blob/main/docs/PRIVACY-POLICY-v0.2.md"
   },
   "manifestPermissions": [
     {
@@ -135,9 +137,9 @@
     "statement": "BrowserCrew does not download or execute remote JavaScript or WebAssembly. AI and MCP responses are treated as data and remain behind BrowserCrew's local policy/tool boundaries."
   },
   "requiredStoreAssets": [
-    { "id": "icon_128_png", "required": true, "status": "missing", "spec": "128x128 PNG in the extension ZIP" },
+    { "id": "icon_128_png", "required": true, "status": "ready", "path": "src/assets/icons/browsercrew-128.png", "sha256": "8bcec8327cb641996bddf9a0f5817c7e5014c3dd272ab74a25d40491d9023eb7", "spec": "128x128 PNG in the extension ZIP" },
     { "id": "screenshot_1280x800", "required": true, "status": "generated_by_ci", "path": "artifacts/store-media/browsercrew-workspace-1280x800.png", "spec": "At least one 1280x800 or 640x400 product screenshot; BrowserCrew generates a real installed-extension 1280x800 Workspace screenshot" },
-    { "id": "small_promo_440x280", "required": true, "status": "missing", "spec": "440x280 PNG or JPEG" },
+    { "id": "small_promo_440x280", "required": true, "status": "generated_by_ci", "path": "artifacts/store-media/browsercrew-small-promo-440x280.png", "spec": "440x280 PNG rendered from the reviewed BrowserCrew brand lockup and NeoBrutal Soft palette" },
     { "id": "youtube_video", "required": false, "status": "optional", "spec": "Optional/marketing video URL unless Dashboard requires it for the chosen listing flow" },
     { "id": "marquee_1400x560", "required": false, "status": "optional", "spec": "1400x560 PNG or JPEG" }
   ],
@@ -145,8 +147,8 @@
     "Chrome Web Store developer account with 2-step verification",
     "Store listing fields completed in Developer Dashboard",
     "Privacy practices fields completed and consistent with this contract and the public privacy policy",
-    "Public privacy policy URL",
-    "Support/contact information",
+    "Reviewed public privacy-policy URL entered in Developer Dashboard",
+    "Reviewed public support URL entered in Developer Dashboard",
     "Required graphic assets uploaded",
     "Exact final candidate ZIP uploaded",
     "Chrome Web Store review completed"

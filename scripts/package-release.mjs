@@ -44,6 +44,14 @@ assert.deepEqual(
   "Release package optional host permission contract changed."
 );
 assert.equal(Object.prototype.hasOwnProperty.call(manifest, "host_permissions"), false, "Release package must not ship seeded test host permissions.");
+const expectedIcons = {
+  "16": "src/assets/icons/browsercrew-16.png",
+  "32": "src/assets/icons/browsercrew-32.png",
+  "48": "src/assets/icons/browsercrew-48.png",
+  "128": "src/assets/icons/browsercrew-128.png"
+};
+assert.deepEqual(manifest.icons, expectedIcons, "Release package must include the reviewed BrowserCrew icon set.");
+assert.deepEqual(manifest.action?.default_icon, expectedIcons, "Toolbar action must use the reviewed BrowserCrew icon set.");
 
 let files = await listFiles(stageDir);
 files = files.map(toPosix).sort();
@@ -53,6 +61,10 @@ for (const required of [
   "sidepanel.html",
   "src/service-worker.js",
   "src/chat-attachments-ui.js",
+  "src/assets/icons/browsercrew-16.png",
+  "src/assets/icons/browsercrew-32.png",
+  "src/assets/icons/browsercrew-48.png",
+  "src/assets/icons/browsercrew-128.png",
   "node_modules/pdfjs-dist/legacy/build/pdf.mjs",
   "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"
 ]) assert.ok(files.includes(required), `Release package is missing required runtime file: ${required}`);
