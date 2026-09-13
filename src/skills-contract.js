@@ -1,3 +1,5 @@
+import { SKILL_CONTRACT_METADATA_VERSION, hasCompleteSkillContractMetadata } from "./skills-contract-metadata.js";
+
 export const SKILL_SCHEMA_VERSION = 1;
 export const SKILL_STATUSES = Object.freeze(["draft", "approved", "archived"]);
 export const SKILL_STEP_KINDS = Object.freeze([
@@ -28,7 +30,7 @@ const FORBIDDEN_KEYS = new Set([
   "authorization"
 ]);
 
-export function validateSkill(skill, { requireApproved = false } = {}) {
+export function validateSkill(skill, { requireApproved = false, requireMetadata = false } = {}) {
   const errors = [];
   if (!skill || typeof skill !== "object" || Array.isArray(skill)) return { ok: false, errors: ["Skill must be an object."] };
 
@@ -84,6 +86,10 @@ export function validateSkill(skill, { requireApproved = false } = {}) {
     if (!cleanText(skill.provenance.source, 80)) errors.push("provenance.source is required.");
     if (!cleanText(skill.provenance.createdAt, 64)) errors.push("provenance.createdAt is required.");
   }
+
+  const hasMetadata = hasCompleteSkillContractMetadata(skill) || ["allowedResources", "providerRequirements", "writePolicy", "verificationRules", "createdAt", "updatedAt", "compatibility"].some((key) => Object.prototype.hasOwnProperty.call(skill, key));
+  if (requireMetadata && !hasCompleteSkillContractMetadata(skill)) errors.push("Skill contract metadata is required before this version can be saved or approved.");
+  if (hasMetadata) validateContractMetadata(skill, errors);
 
   walkForForbiddenKeys(skill, "$", errors);
   return { ok: errors.length === 0, errors };
@@ -147,8 +153,32 @@ function validateStep(step, index, inputs, seen, errors) {
     }
   }
   if (step.kind === "type" && step.value === undefined) errors.push(`${label}.value is required for type.`);
-  if (step.kind === "verify" && !isPlainObject(step.expect)) errors.push(`${label}.expect is required for verify.`);
+  if (["waitFor", "verify"].includes(step.kind) && !isPlainObject(step.expect)) errors.push(`${label}.expect is required for ${step.kind}.`);
+  if (step.kind === "waitFor" && step.timeoutMs !== undefined && !positiveInteger(step.timeoutMs, 100, 30_000)) errors.push(`${label}.timeoutMs must be an integer from 100 to 30000.`);
   validateInputReferences(step, inputs, label, errors);
+}
+
+function validateContractMetadata(skill, errors) {
+  validateStringArray(skill.allowedResources || [], "allowedResources", errors, { min: 0, max: 64 });
+  if (!isPlainObject(skill.providerRequirements)) errors.push("providerRequirements must be an object.");
+  else validateStringArray(skill.providerRequirements.capabilities || [], "providerRequirements.capabilities", errors, { min: 0, max: 64 });
+
+  if (!isPlainObject(skill.writePolicy) || skill.writePolicy.approvalRequired !== true || skill.writePolicy.noBlindRetry !== true) {
+    errors.push("writePolicy must require approval and preserve no-blind-write-retry semantics.");
+  }
+  if (!isPlainObject(skill.verificationRules) || skill.verificationRules.reobserveTargetsBeforeDispatch !== true || skill.verificationRules.requireFinalVerification !== true) {
+    errors.push("verificationRules must require target re-observation and final verification.");
+  }
+
+  if (!validTimestamp(skill.createdAt)) errors.push("createdAt must be an ISO timestamp.");
+  if (!validTimestamp(skill.updatedAt)) errors.push("updatedAt must be an ISO timestamp.");
+  if (validTimestamp(skill.createdAt) && validTimestamp(skill.updatedAt) && Date.parse(skill.updatedAt) < Date.parse(skill.createdAt)) errors.push("updatedAt cannot be earlier than createdAt.");
+
+  if (!isPlainObject(skill.compatibility)) errors.push("compatibility must be an object.");
+  else {
+    if (skill.compatibility.metadataVersion !== SKILL_CONTRACT_METADATA_VERSION) errors.push(`compatibility.metadataVersion must be ${SKILL_CONTRACT_METADATA_VERSION}.`);
+    if (!VERSION_PATTERN.test(String(skill.compatibility.minBrowserCrewVersion || ""))) errors.push("compatibility.minBrowserCrewVersion must use semantic x.y.z form.");
+  }
 }
 
 function validateInputReferences(value, inputs, path, errors) {
@@ -196,6 +226,7 @@ function validateStringArray(value, name, errors, { min, max }) {
   }
 }
 
+function validTimestamp(value) { return typeof value === "string" && Boolean(value.trim()) && Number.isFinite(Date.parse(value)); }
 function cleanText(value, max) { return typeof value === "string" && value.trim().length > 0 && value.length <= max; }
 function positiveInteger(value, min, max) { return Number.isInteger(value) && value >= min && value <= max; }
 function isPlainObject(value) { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }

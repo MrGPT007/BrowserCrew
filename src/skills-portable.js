@@ -1,4 +1,5 @@
 import { validateSkill } from "./skills-contract.js";
+import { migrateSkillContractMetadata } from "./skills-contract-metadata.js";
 
 export const SKILL_PORTABLE_FORMAT = "browsercrew.skill";
 export const SKILL_PORTABLE_FORMAT_VERSION = 1;
@@ -9,11 +10,7 @@ const EXECUTABLE_LIKE_KEYS = /^(?:code|script|javascript|eval|shell|command|remo
 
 export function exportSkillBundle(skill) {
   const normalized = normalizePortableSkill(skill);
-  const envelope = {
-    format: SKILL_PORTABLE_FORMAT,
-    formatVersion: SKILL_PORTABLE_FORMAT_VERSION,
-    skill: normalized
-  };
+  const envelope = { format: SKILL_PORTABLE_FORMAT, formatVersion: SKILL_PORTABLE_FORMAT_VERSION, skill: normalized };
   return `${stableStringify(envelope)}\n`;
 }
 
@@ -33,13 +30,7 @@ export function parseSkillBundle(text) {
   rejectExecutableLikeKeys(envelope.skill, "$.skill");
   const sourceSkill = normalizePortableSkill(envelope.skill);
   const canonicalText = exportSkillBundle(sourceSkill);
-  return {
-    format: SKILL_PORTABLE_FORMAT,
-    formatVersion: SKILL_PORTABLE_FORMAT_VERSION,
-    sourceSkill,
-    canonicalText,
-    preview: previewPortableSkill(sourceSkill)
-  };
+  return { format: SKILL_PORTABLE_FORMAT, formatVersion: SKILL_PORTABLE_FORMAT_VERSION, sourceSkill, canonicalText, preview: previewPortableSkill(sourceSkill) };
 }
 
 export function importSkillAsDraft(parsedOrText, { id, createdAt } = {}) {
@@ -53,6 +44,8 @@ export function importSkillAsDraft(parsedOrText, { id, createdAt } = {}) {
     id,
     version: "0.1.0",
     status: "draft",
+    createdAt,
+    updatedAt: createdAt,
     provenance: {
       source: "skill_import",
       createdAt,
@@ -63,7 +56,7 @@ export function importSkillAsDraft(parsedOrText, { id, createdAt } = {}) {
   delete draft.approval;
   delete draft.archivedAt;
 
-  const check = validateSkill(draft);
+  const check = validateSkill(draft, { requireMetadata: true });
   if (!check.ok) throw new Error(`Imported draft is invalid: ${check.errors.join(" ")}`);
   return draft;
 }
@@ -75,45 +68,54 @@ export function previewPortableSkill(skill) {
     title: normalized.title,
     description: normalized.description,
     allowedOrigins: structuredClone(normalized.allowedOrigins),
+    allowedResources: structuredClone(normalized.allowedResources || []),
     actionClasses: structuredClone(normalized.actionClasses),
     dataDestinations: structuredClone(normalized.dataDestinations || []),
+    providerCapabilities: structuredClone(normalized.providerRequirements?.capabilities || []),
     inputCount: Object.keys(normalized.inputs || {}).length,
     stepCount: normalized.steps.length,
-    budgets: structuredClone(normalized.budgets)
+    budgets: structuredClone(normalized.budgets),
+    compatibility: structuredClone(normalized.compatibility)
   };
 }
 
-export function stableStringify(value) {
-  return JSON.stringify(sortValue(value), null, 2);
-}
+export function stableStringify(value) { return JSON.stringify(sortValue(value), null, 2); }
 
 function normalizePortableSkill(rawSkill) {
   if (!isPlainObject(rawSkill)) throw new Error("Skill must be a JSON object.");
   rejectExecutableLikeKeys(rawSkill, "$.skill");
   const rawCheck = validateSkill(rawSkill);
   if (!rawCheck.ok) throw new Error(`Skill failed validation: ${rawCheck.errors.join(" ")}`);
+  const effective = migrateSkillContractMetadata(rawSkill);
 
   const skill = {
-    schemaVersion: rawSkill.schemaVersion,
-    id: rawSkill.id,
-    version: rawSkill.version,
-    status: rawSkill.status,
-    title: rawSkill.title,
-    description: rawSkill.description,
-    inputs: projectInputs(rawSkill.inputs || {}),
-    allowedOrigins: structuredClone(rawSkill.allowedOrigins),
-    actionClasses: structuredClone(rawSkill.actionClasses),
-    dataDestinations: structuredClone(rawSkill.dataDestinations || []),
-    budgets: { maxSteps: rawSkill.budgets.maxSteps, maxMinutes: rawSkill.budgets.maxMinutes },
-    steps: rawSkill.steps.map(projectStep),
-    completionCriteria: rawSkill.completionCriteria.map((item) => ({ claim: item.claim, verification: item.verification })),
-    recovery: { retryWrites: rawSkill.recovery.retryWrites, reconcileUnknownWrites: rawSkill.recovery.reconcileUnknownWrites },
-    provenance: structuredClone(rawSkill.provenance)
+    schemaVersion: effective.schemaVersion,
+    id: effective.id,
+    version: effective.version,
+    status: effective.status,
+    title: effective.title,
+    description: effective.description,
+    inputs: projectInputs(effective.inputs || {}),
+    allowedOrigins: structuredClone(effective.allowedOrigins),
+    allowedResources: structuredClone(effective.allowedResources || []),
+    actionClasses: structuredClone(effective.actionClasses),
+    dataDestinations: structuredClone(effective.dataDestinations || []),
+    providerRequirements: structuredClone(effective.providerRequirements),
+    budgets: { maxSteps: effective.budgets.maxSteps, maxMinutes: effective.budgets.maxMinutes },
+    steps: effective.steps.map(projectStep),
+    completionCriteria: effective.completionCriteria.map((item) => ({ claim: item.claim, verification: item.verification })),
+    verificationRules: structuredClone(effective.verificationRules),
+    writePolicy: structuredClone(effective.writePolicy),
+    recovery: { retryWrites: effective.recovery.retryWrites, reconcileUnknownWrites: effective.recovery.reconcileUnknownWrites },
+    provenance: structuredClone(effective.provenance),
+    createdAt: effective.createdAt,
+    updatedAt: effective.updatedAt,
+    compatibility: structuredClone(effective.compatibility)
   };
-  if (isPlainObject(rawSkill.approval)) skill.approval = structuredClone(rawSkill.approval);
-  if (typeof rawSkill.archivedAt === "string") skill.archivedAt = rawSkill.archivedAt;
+  if (isPlainObject(effective.approval)) skill.approval = structuredClone(effective.approval);
+  if (typeof effective.archivedAt === "string") skill.archivedAt = effective.archivedAt;
 
-  const check = validateSkill(skill);
+  const check = validateSkill(skill, { requireMetadata: true });
   if (!check.ok) throw new Error(`Portable Skill normalization failed: ${check.errors.join(" ")}`);
   return skill;
 }
@@ -122,9 +124,7 @@ function projectInputs(inputs) {
   const out = {};
   for (const [name, input] of Object.entries(inputs)) {
     const projected = {};
-    for (const key of ["name", "type", "required", "secret", "label", "default", "maxLength"]) {
-      if (Object.prototype.hasOwnProperty.call(input, key)) projected[key] = structuredClone(input[key]);
-    }
+    for (const key of ["name", "type", "required", "secret", "label", "default", "maxLength"]) if (Object.prototype.hasOwnProperty.call(input, key)) projected[key] = structuredClone(input[key]);
     out[name] = projected;
   }
   return out;
@@ -132,7 +132,7 @@ function projectInputs(inputs) {
 
 function projectStep(step) {
   const projected = { id: step.id, kind: step.kind, purpose: step.purpose };
-  for (const key of ["origin", "value", "url"]) if (Object.prototype.hasOwnProperty.call(step, key)) projected[key] = structuredClone(step[key]);
+  for (const key of ["origin", "value", "url", "timeoutMs"]) if (Object.prototype.hasOwnProperty.call(step, key)) projected[key] = structuredClone(step[key]);
   if (isPlainObject(step.target)) projected.target = pick(step.target, ["role", "label", "ariaLabel", "name", "id", "testId", "type", "autocomplete", "placeholder"]);
   if (isPlainObject(step.expect)) projected.expect = pick(step.expect, ["visibleText", "urlIncludes", "role", "label", "state"]);
   if (isPlainObject(step.download)) projected.download = pick(step.download, ["userInitiated", "expectedUrlOrigin"]);
@@ -144,7 +144,6 @@ function pick(value, keys) {
   for (const key of keys) if (Object.prototype.hasOwnProperty.call(value, key)) out[key] = structuredClone(value[key]);
   return out;
 }
-
 function rejectExecutableLikeKeys(value, path) {
   if (Array.isArray(value)) return value.forEach((item, index) => rejectExecutableLikeKeys(item, `${path}[${index}]`));
   if (!isPlainObject(value)) return;
@@ -153,11 +152,9 @@ function rejectExecutableLikeKeys(value, path) {
     rejectExecutableLikeKeys(child, `${path}.${key}`);
   }
 }
-
 function sortValue(value) {
   if (Array.isArray(value)) return value.map(sortValue);
   if (!isPlainObject(value)) return value;
   return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortValue(value[key])]));
 }
-
 function isPlainObject(value) { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }

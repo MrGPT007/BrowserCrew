@@ -27,16 +27,23 @@ const sourceSkill = {
     accountSecret: { name: "accountSecret", type: "string", required: true, secret: true, label: "Private value" }
   },
   allowedOrigins: ["https://example.test"],
+  allowedResources: ["workspace:supplier-review"],
   actionClasses: ["read", "page_write_prepare"],
   dataDestinations: ["https://partner.test"],
+  providerRequirements: { capabilities: ["text_generation"] },
   budgets: { maxSteps: 12, maxMinutes: 9 },
   steps: [
     { id: "step-search", kind: "type", purpose: "Enter the reviewed search term.", origin: "https://example.test", target: { role: "textbox", label: "Search" }, value: "{{input.searchTerm}}" },
     { id: "step-verify", kind: "verify", purpose: "Verify the reviewed result.", origin: "https://example.test", expect: { visibleText: "Ready" } }
   ],
   completionCriteria: [{ claim: "The supplier result is ready.", verification: "Visible text says Ready." }],
+  verificationRules: { reobserveTargetsBeforeDispatch: true, requireFinalVerification: true },
+  writePolicy: { approvalRequired: true, noBlindRetry: true },
   recovery: { retryWrites: false, reconcileUnknownWrites: true },
   provenance: { source: "watch_me_demonstration", sessionId: "watch-portable", createdAt: "2026-09-13T00:00:00.000Z", eventCount: 2 },
+  createdAt: "2026-09-13T00:00:00.000Z",
+  updatedAt: "2026-09-13T00:05:00.000Z",
+  compatibility: { metadataVersion: 1, minBrowserCrewVersion: "0.2.0" },
   approval: { approvedAt: "2026-09-13T00:05:00.000Z", approvedBy: "user" }
 };
 
@@ -81,6 +88,8 @@ try {
   assert.equal(exportedText, exportSkillBundle(sourceSkill), "UI export must use the deterministic portable Skill format.");
   const parsed = parseSkillBundle(exportedText);
   assert.equal(parsed.canonicalText, exportedText, "Export -> parse -> export must stay byte-stable.");
+  assert.deepEqual(parsed.preview.allowedResources, sourceSkill.allowedResources);
+  assert.deepEqual(parsed.preview.providerCapabilities, sourceSkill.providerRequirements.capabilities);
   pass("Approved exact version exports as deterministic versioned JSON without changing authority");
 
   const libraryAfterExport = await storedSkills(worker);
@@ -98,12 +107,14 @@ try {
   const previewText = await preview.innerText();
   assert.match(previewText, /UNTRUSTED IMPORT/i);
   assert.match(previewText, /https:\/\/example\.test/);
+  assert.match(previewText, /workspace:supplier-review/);
   assert.match(previewText, /page_write_prepare/);
+  assert.match(previewText, /text_generation/);
   assert.match(previewText, /https:\/\/partner\.test/);
   assert.match(previewText, /Importing never preserves approval or archive authority/i);
   assert.match(previewText, /Nothing runs and no permission is granted/i);
   assert.equal((await storedSkills(worker)).length, 1, "Previewing an import must not persist it.");
-  pass("Untrusted import previews exact requested sites, actions, destinations, budgets, and source version before persistence");
+  pass("Untrusted import previews exact sites, resources, actions, provider capabilities, destinations, budgets, and source version before persistence");
 
   await preview.getByRole("button", { name: "Import as draft" }).click();
   await waitUntil(async () => (await storedSkills(worker)).length === 2, "Confirmed Skill import should create one additional version.");
@@ -116,16 +127,20 @@ try {
   assert.equal(imported.approval, undefined, "Import must strip source approval authority.");
   assert.equal(imported.archivedAt, undefined);
   assert.deepEqual(imported.allowedOrigins, sourceSkill.allowedOrigins);
+  assert.deepEqual(imported.allowedResources, sourceSkill.allowedResources);
   assert.deepEqual(imported.actionClasses, sourceSkill.actionClasses);
+  assert.deepEqual(imported.providerRequirements, sourceSkill.providerRequirements);
   assert.deepEqual(imported.dataDestinations, sourceSkill.dataDestinations);
   assert.deepEqual(imported.budgets, sourceSkill.budgets);
   assert.deepEqual(imported.steps, sourceSkill.steps);
   assert.deepEqual(imported.provenance.sourceSkillRef, { id: sourceSkill.id, version: sourceSkill.version });
+  assert.equal(imported.createdAt, imported.provenance.createdAt);
+  assert.ok(Date.parse(imported.updatedAt) >= Date.parse(imported.createdAt));
   assert.equal(skills.find((item) => item.id === sourceSkill.id)?.status, "approved", "Import must not alter the source exact version.");
   await waitUntil(async () => /Imported as a new draft/i.test(await panel.locator("#toast").innerText()), "Import should explain that the new version remains a draft.");
   const permissionsAfterImport = await grantedPermissions(worker);
   assert.deepEqual(permissionsAfterImport, permissionsBefore, "Skill import must not grant Chrome permissions.");
-  pass("Confirmed import creates a new unapproved 0.1.0 draft, preserves bounded declarative scope, and grants nothing");
+  pass("Confirmed import creates a new unapproved 0.1.0 draft, preserves bounded declarative scope and metadata, and grants nothing");
 
   const hostile = JSON.parse(exportedText);
   hostile.skill.remoteCode = "https://evil.test/payload.js";

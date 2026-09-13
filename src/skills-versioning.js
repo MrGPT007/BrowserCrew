@@ -1,4 +1,5 @@
 import { validateSkill } from "./skills-contract.js";
+import { migrateSkillContractMetadata } from "./skills-contract-metadata.js";
 
 export function createNextVersionDraft(source, versions = [], { createdAt } = {}) {
   const original = structuredClone(source || {});
@@ -15,15 +16,18 @@ export function createNextVersionDraft(source, versions = [], { createdAt } = {}
   draft.status = "draft";
   delete draft.approval;
   delete draft.archivedAt;
+  delete draft.createdAt;
+  delete draft.updatedAt;
   draft.provenance = {
     source: "skill_version_draft",
     sourceSkillRef: { id: original.id, version: original.version },
     createdAt
   };
 
-  const result = validateSkill(draft);
+  const complete = migrateSkillContractMetadata(draft, { updatedAt: createdAt });
+  const result = validateSkill(complete, { requireMetadata: true });
   if (!result.ok) throw new Error(`New skill version draft is invalid: ${result.errors.join(" ")}`);
-  return draft;
+  return complete;
 }
 
 function parseVersion(value) {

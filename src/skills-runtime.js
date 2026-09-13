@@ -1,4 +1,5 @@
 import { assertSkillExecutable, promoteSkillDraft, validateSkill } from "./skills-contract.js";
+import { assertSkillCompatibility, assertSkillMetadataGrantCoversRequirements, migrateSkillContractMetadata } from "./skills-contract-metadata.js";
 import { runApprovedSkill } from "./skills-runner.js";
 
 const SKILL_LIBRARY_KEY = "browsercrew.skillLibrary.v1";
@@ -43,14 +44,16 @@ export async function listSkillVersions() {
 }
 
 export async function getSkillVersion(skillId, version) {
-  const skill = (await listSkillVersions()).find((item) => item.id === skillId && item.version === version) || null;
+  const stored = (await listSkillVersions()).find((item) => item.id === skillId && item.version === version) || null;
+  const skill = stored ? migrateSkillContractMetadata(stored) : null;
   return { ok: Boolean(skill), skill, error: skill ? undefined : { code: "SKILL_VERSION_NOT_FOUND", message: "That saved skill version could not be found." } };
 }
 
 export async function saveSkillDraft(input) {
-  const skill = structuredClone(input || {});
+  const now = new Date().toISOString();
+  const skill = migrateSkillContractMetadata(input || {}, { updatedAt: now });
   skill.status = "draft";
-  const result = validateSkill(skill);
+  const result = validateSkill(skill, { requireMetadata: true });
   if (!result.ok) throw coded("SKILL_INVALID", result.errors.join(" "));
 
   const skills = await listSkillVersions();
@@ -68,9 +71,17 @@ export async function approveSkillVersion(skillId, version) {
   const index = skills.findIndex((item) => item.id === skillId && item.version === version);
   if (index < 0) throw coded("SKILL_VERSION_NOT_FOUND", "That draft skill version could not be found.");
   assertExecutableCompletion(skills[index]);
-  const approved = promoteSkillDraft(skills[index], { approvedAt: new Date().toISOString(), approvedBy: "user" });
+  const now = new Date().toISOString();
+  const candidate = migrateSkillContractMetadata(skills[index], { updatedAt: now });
+  const metadataCheck = validateSkill(candidate, { requireMetadata: true });
+  if (!metadataCheck.ok) throw coded("SKILL_INVALID", metadataCheck.errors.join(" "));
+  assertSkillCompatibility(candidate);
+  assertExecutableCompletion(candidate);
+  const approved = promoteSkillDraft(candidate, { approvedAt: now, approvedBy: "user" });
   assertSkillExecutable(approved);
   assertExecutableCompletion(approved);
+  const approvedCheck = validateSkill(approved, { requireApproved: true, requireMetadata: true });
+  if (!approvedCheck.ok) throw coded("SKILL_INVALID", approvedCheck.errors.join(" "));
   skills[index] = approved;
   await persist(skills);
   return { ok: true, skill: approved };
@@ -81,7 +92,9 @@ export async function archiveSkillVersion(skillId, version) {
   const index = skills.findIndex((item) => item.id === skillId && item.version === version);
   if (index < 0) throw coded("SKILL_VERSION_NOT_FOUND", "That skill version could not be found.");
   if (skills[index].status !== "approved") throw coded("SKILL_NOT_APPROVED", "Only an approved skill version can be archived.");
-  skills[index] = { ...skills[index], status: "archived", archivedAt: new Date().toISOString() };
+  const now = new Date().toISOString();
+  const skill = migrateSkillContractMetadata(skills[index], { updatedAt: now });
+  skills[index] = { ...skill, status: "archived", archivedAt: now };
   await persist(skills);
   return { ok: true, skill: skills[index] };
 }
@@ -100,6 +113,8 @@ export async function executeSkillVersion({ skillId, version, tabId, inputValues
   if (!response.ok || !response.skill) throw coded("SKILL_VERSION_NOT_FOUND", "That exact skill version could not be found.");
   const skill = response.skill;
   assertSkillExecutable(skill);
+  assertSkillCompatibility(skill);
+  assertSkillMetadataGrantCoversRequirements(skill, grant);
   assertExecutableCompletion(skill);
 
   const run = {
@@ -157,9 +172,7 @@ export async function stopSkillRun(runId) {
     return { ok: true, run: existing, alreadySettled: existing.status !== "running" };
   }
   controller.abort();
-  const run = await mutateSkillRun(runId, (item) => {
-    item.stopRequestedAt = new Date().toISOString();
-  });
+  const run = await mutateSkillRun(runId, (item) => { item.stopRequestedAt = new Date().toISOString(); });
   return { ok: true, run, stopRequested: true };
 }
 
@@ -179,7 +192,7 @@ export async function migrateLegacySkills() {
     if (!old?.id || existingLegacyIds.has(old.id)) continue;
     const id = slug(old.name || "reusable-job", old.id);
     const createdAt = old.createdAt || new Date().toISOString();
-    const draft = {
+    const draft = migrateSkillContractMetadata({
       schemaVersion: 1,
       id,
       version: "0.1.0",
@@ -198,14 +211,11 @@ export async function migrateLegacySkills() {
         origin: "https://migration.invalid",
         expect: { state: "manual_migration_required" }
       }],
-      completionCriteria: [{
-        claim: "The legacy reusable job has been reviewed and converted to explicit semantic steps.",
-        verification: "A user must edit and approve this draft before it can execute."
-      }],
+      completionCriteria: [{ claim: "The legacy reusable job has been reviewed and converted to explicit semantic steps.", verification: "A user must edit and approve this draft before it can execute." }],
       recovery: { retryWrites: false, reconcileUnknownWrites: true },
       provenance: { source: "legacy_reusable_job", legacySkillId: old.id, createdAt }
-    };
-    const validation = validateSkill(draft);
+    }, { updatedAt: createdAt });
+    const validation = validateSkill(draft, { requireMetadata: true });
     if (!validation.ok) continue;
     existing.push(draft);
     migrated.push(draft);
@@ -261,9 +271,7 @@ async function persist(skills) {
 
 function assertExecutableCompletion(skill) {
   const last = Array.isArray(skill?.steps) ? skill.steps.at(-1) : null;
-  if (!last || last.kind !== "verify" || !last.expect || typeof last.expect !== "object" || Array.isArray(last.expect)) {
-    throw coded("SKILL_COMPLETION_CHECK_REQUIRED", "Add a final visible result check before approving or running this skill.");
-  }
+  if (!last || last.kind !== "verify" || !last.expect || typeof last.expect !== "object" || Array.isArray(last.expect)) throw coded("SKILL_COMPLETION_CHECK_REQUIRED", "Add a final visible result check before approving or running this skill.");
   const hasConcreteExpectation = ["visibleText", "urlIncludes", "role", "label", "state"].some((key) => typeof last.expect[key] === "string" && last.expect[key].trim());
   if (!hasConcreteExpectation) throw coded("SKILL_COMPLETION_CHECK_REQUIRED", "The final result check needs a concrete page condition before this skill can run.");
   return true;

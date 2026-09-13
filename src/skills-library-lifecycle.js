@@ -1,4 +1,5 @@
 import { validateSkill } from "./skills-contract.js";
+import { migrateSkillContractMetadata } from "./skills-contract-metadata.js";
 
 export function duplicateSkillAsDraft(source, { id, title, createdAt } = {}) {
   const original = structuredClone(source || {});
@@ -13,15 +14,18 @@ export function duplicateSkillAsDraft(source, { id, title, createdAt } = {}) {
   duplicate.title = normalizeTitle(title || `${original.title} copy`);
   delete duplicate.approval;
   delete duplicate.archivedAt;
+  delete duplicate.createdAt;
+  delete duplicate.updatedAt;
   duplicate.provenance = {
     source: "skill_duplicate",
     sourceSkillRef: { id: original.id, version: original.version },
     createdAt
   };
 
-  const result = validateSkill(duplicate);
+  const complete = migrateSkillContractMetadata(duplicate, { updatedAt: createdAt });
+  const result = validateSkill(complete, { requireMetadata: true });
   if (!result.ok) throw new Error(`Duplicated skill draft is invalid: ${result.errors.join(" ")}`);
-  return duplicate;
+  return complete;
 }
 
 function normalizeTitle(value) {

@@ -217,7 +217,9 @@ async function runOnce() {
   const button = document.querySelector("#skillRunOnceButton");
   let inputValues;
   try { inputValues = readInputs(); } catch (error) { return announce(error.message); }
-  const approvalText = `Run “${selectedSkill.title}” v${selectedSkill.version} once?\n\nWebsites: ${selectedSkill.allowedOrigins.join(", ")}\nActions: ${selectedSkill.actionClasses.join(", ")}\nData destinations: ${(selectedSkill.dataDestinations || []).join(", ") || "none"}\nLimits: ${selectedSkill.budgets.maxSteps} steps / ${selectedSkill.budgets.maxMinutes} minutes\n\nThis approval is for this run only. Saved Skill requirements do not grant permission by themselves.`;
+  const resources = selectedSkill.allowedResources || [];
+  const providerCapabilities = selectedSkill.providerRequirements?.capabilities || [];
+  const approvalText = `Run “${selectedSkill.title}” v${selectedSkill.version} once?\n\nWebsites: ${selectedSkill.allowedOrigins.join(", ")}\nResources: ${resources.join(", ") || "none"}\nActions: ${selectedSkill.actionClasses.join(", ")}\nProvider capabilities: ${providerCapabilities.join(", ") || "none"}\nData destinations: ${(selectedSkill.dataDestinations || []).join(", ") || "none"}\nLimits: ${selectedSkill.budgets.maxSteps} steps / ${selectedSkill.budgets.maxMinutes} minutes\n\nThis approval is for this run only. Saved Skill requirements do not grant permission by themselves.`;
   if (!confirm(approvalText)) return;
   busy(button, true, "Running…");
   try {
@@ -228,7 +230,9 @@ async function runOnce() {
     if (!startOrigin || !selectedSkill.allowedOrigins.includes(startOrigin)) throw new Error("The current page is outside this Skill's reviewed website scope.");
     const oneRunGrant = {
       origins: [...selectedSkill.allowedOrigins],
+      resources: [...resources],
       actionClasses: [...selectedSkill.actionClasses],
+      providerCapabilities: [...providerCapabilities],
       dataDestinations: [...(selectedSkill.dataDestinations || [])],
       revoked: false,
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
@@ -270,7 +274,9 @@ async function requestOrigins(origins) {
 
 function scopeSummary(skill, tab) {
   const page = tab?.url && /^https?:/.test(tab.url) ? new URL(tab.url).origin : "No website selected";
-  return `<strong>Exact version v${escapeHtml(skill.version)}</strong><p>Current page: ${escapeHtml(page)}</p><p>Websites: ${escapeHtml(skill.allowedOrigins.join(", "))}</p><p>Actions: ${escapeHtml(skill.actionClasses.join(", "))}</p><p>Data destinations: ${escapeHtml((skill.dataDestinations || []).join(", ") || "none")}</p><p>Limits: ${skill.budgets.maxSteps} steps · ${skill.budgets.maxMinutes} minutes</p>`;
+  const resources = skill.allowedResources || [];
+  const providerCapabilities = skill.providerRequirements?.capabilities || [];
+  return `<strong>Exact version v${escapeHtml(skill.version)}</strong><p>Current page: ${escapeHtml(page)}</p><p>Websites: ${escapeHtml(skill.allowedOrigins.join(", "))}</p><p>Resources: ${escapeHtml(resources.join(", ") || "none")}</p><p>Actions: ${escapeHtml(skill.actionClasses.join(", "))}</p><p>Provider capabilities: ${escapeHtml(providerCapabilities.join(", ") || "none")}</p><p>Data destinations: ${escapeHtml((skill.dataDestinations || []).join(", ") || "none")}</p><p>Limits: ${skill.budgets.maxSteps} steps · ${skill.budgets.maxMinutes} minutes</p>`;
 }
 
 async function listSkills() {

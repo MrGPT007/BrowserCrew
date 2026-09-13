@@ -29,7 +29,7 @@ function createPortableControls() {
       <button class="button button-small tactile" id="skillImportButton" type="button">Import Skill JSON</button>
       <input id="skillImportFile" type="file" accept=".json,application/json" hidden />
     </div>
-    <p class="helper">Imported Skill files are untrusted. BrowserCrew shows their requested sites and actions first, then saves them only as a new draft for review.</p>`;
+    <p class="helper">Imported Skill files are untrusted. BrowserCrew shows their requested sites, resources, actions, provider needs, and data sharing first, then saves them only as a new draft for review.</p>`;
   return wrap;
 }
 
@@ -128,7 +128,9 @@ function renderImportPreview(preview) {
 
   importPanel.append(helper(`Source: ${preview.sourceRef.id} · v${preview.sourceRef.version} · ${preview.sourceRef.status}. Importing never preserves approval or archive authority.`));
   importPanel.append(scopeSection("Requested websites", preview.allowedOrigins, "No websites requested."));
+  importPanel.append(scopeSection("Requested resources", preview.allowedResources, "No extra resources requested."));
   importPanel.append(scopeSection("Requested actions", preview.actionClasses, "No actions requested."));
+  importPanel.append(scopeSection("Provider capabilities", preview.providerCapabilities, "No provider capability required."));
   importPanel.append(scopeSection("Data destinations", preview.dataDestinations, "No external data destinations."));
   importPanel.append(helper(`${preview.stepCount} semantic steps · ${preview.inputCount} runtime inputs · budget up to ${preview.budgets.maxSteps} steps / ${preview.budgets.maxMinutes} minutes.`));
   importPanel.append(helper("Nothing runs and no permission is granted by this file. Importing creates a brand-new draft that you must review and approve separately."));

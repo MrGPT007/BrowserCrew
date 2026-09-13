@@ -87,8 +87,18 @@ try {
   assert.equal(next.archivedAt, undefined);
   assert.deepEqual(next.allowedOrigins, approved.allowedOrigins);
   assert.deepEqual(next.actionClasses, approved.actionClasses);
+  assert.deepEqual(next.allowedResources, []);
+  assert.deepEqual(next.providerRequirements, { capabilities: [] });
+  assert.deepEqual(next.writePolicy, { approvalRequired: true, noBlindRetry: true });
+  assert.deepEqual(next.verificationRules, { reobserveTargetsBeforeDispatch: true, requireFinalVerification: true });
+  assert.equal(next.createdAt, next.provenance.createdAt, "The new exact version must use its own creation timestamp.");
+  assert.notEqual(next.createdAt, approved.provenance.createdAt, "The new exact version must not inherit the source version creation time.");
+  assert.ok(Date.parse(next.updatedAt) >= Date.parse(next.createdAt));
+  assert.deepEqual(next.compatibility, { metadataVersion: 1, minBrowserCrewVersion: "0.2.0" });
   assert.deepEqual(next.provenance.sourceSkillRef, { id: approved.id, version: approved.version });
-  pass("Versions preserves stable lineage while every new version starts as an unapproved draft with unchanged scope");
+  const storedLegacyApproved = skills.find((item) => item.id === "supplier-check" && item.version === "1.0.0");
+  assert.equal(Object.prototype.hasOwnProperty.call(storedLegacyApproved, "allowedResources"), false, "Reading a legacy approved version must not rewrite immutable stored history.");
+  pass("Legacy v1 metadata is normalized in memory while every newly saved draft persists complete safe metadata with its own timestamp without rewriting approved history");
 
   await panel.getByRole("button", { name: /^All versions/ }).click();
   await waitUntil(async () => await panel.locator('[data-skill-record="supplier-check@@1.0.0"]').count() === 1, "Approved version should remain in All versions.");
@@ -96,9 +106,12 @@ try {
   await panel.evaluate(() => document.querySelector('[data-skill-record="supplier-check@@1.0.0"] [data-open-skill-run]')?.click());
   await panel.locator("#skillRunPanel").waitFor({ state: "visible", timeout: timeoutMs });
   await panel.locator('[data-skill-input="query"]').fill(RUN_VALUE);
-  assert.match(await panel.locator("#skillRunScope").innerText(), /Exact version v1\.0\.0/);
-  assert.match(await panel.locator("#skillRunScope").innerText(), /page_write_prepare/);
-  pass("Test / Run review shows the pinned version, websites, actions, data destinations, limits, and run-time inputs before authority exists");
+  const scopeText = await panel.locator("#skillRunScope").innerText();
+  assert.match(scopeText, /Exact version v1\.0\.0/);
+  assert.match(scopeText, /page_write_prepare/);
+  assert.match(scopeText, /Resources: none/);
+  assert.match(scopeText, /Provider capabilities: none/);
+  pass("Test / Run review shows the pinned version, websites, resources, actions, provider capabilities, data destinations, limits, and run-time inputs before authority exists");
 
   const beforeRuns = await storedRuns(worker);
   assert.equal(beforeRuns.length, 0);
