@@ -70,7 +70,10 @@ let releasePauseRaceScheduleRead = null;
 const clone = (value) => structuredClone(value);
 
 function isAtomicHistoryRead(keys) {
-  return Array.isArray(keys) && keys.length === 1 && keys[0] === SCHEDULE_RUNS_KEY;
+  return Array.isArray(keys) && (
+    (keys.length === 1 && keys[0] === SCHEDULE_RUNS_KEY) ||
+    (keys.length === 2 && keys[0] === SCHEDULE_RUNS_KEY && keys[1] === SCHEDULES_KEY)
+  );
 }
 
 function eventBucket(name) {
@@ -275,7 +278,11 @@ for (const phrase of [
   "if (occurrenceLocks.get(key) === current) occurrenceLocks.delete(key)",
   "async function claimScheduledOccurrence(schedule, receipt, missed)",
   "const claim = await claimScheduledOccurrence(schedule, receipt, missed)",
-  "chrome.storage.local.get([SCHEDULE_RUNS_KEY])"
+  "chrome.storage.local.get([SCHEDULE_RUNS_KEY, SCHEDULES_KEY])",
+  "if (!currentSchedule?.enabled) return { action: \"stale\" }",
+  "if (!sameScheduleExecutionSnapshot(currentSchedule, schedule)) return { action: \"stale\" }",
+  "if (claim.action === \"duplicate\" || claim.action === \"stale\") return",
+  "await dispatchReceipt(claim.schedule, receipt)"
 ]) assert.ok(runtimeSource.includes(phrase), `Scheduler occurrence serialization contract missing: ${phrase}`);
 
 const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
