@@ -590,7 +590,9 @@ async function advanceSchedule(scheduleId, firedAt) {
     const index = schedules.findIndex((item) => item.id === scheduleId);
     if (index < 0) return;
     const schedule = { ...schedules[index], lastRunAt: new Date(firedAt).toISOString(), updatedAt: new Date().toISOString() };
-    if (schedule.recurrence.kind === "once") {
+    if (!schedule.enabled) {
+      schedule.nextRunAt = null;
+    } else if (schedule.recurrence.kind === "once") {
       schedule.enabled = false;
       schedule.nextRunAt = null;
     } else if (["daily", "weekly"].includes(schedule.recurrence.kind)) {
