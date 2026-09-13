@@ -41,7 +41,10 @@ const assetSmoke = await readFile("scripts/store-assets-smoke.mjs", "utf8");
 for (const phrase of [
   'id: "icon_128_png"',
   'source: "src/assets/icons/browsercrew-128.png"',
-  '8bcec8327cb641996bddf9a0f5817c7e5014c3dd272ab74a25d40491d9023eb7',
+  '7d707768a259207a1a5963c8cf351f297ccef482153f50d14fd05abf0682ce09',
+  'paddingPx: 16',
+  'width: 96, height: 96',
+  '16px transparent padding on every side',
   'browsercrew-small-promo-440x280.png',
   'viewport: { width: 440, height: 280 }',
   'BrowserCrew',
@@ -63,8 +66,11 @@ if (screenshot.path !== "artifacts/store-media/browsercrew-workspace-1280x800.pn
 if (!String(screenshot.spec || "").includes("1280x800")) throw new Error("Store screenshot contract must retain the exact 1280x800 dimension requirement.");
 
 const icon = contract.requiredStoreAssets?.find((asset) => asset.id === "icon_128_png");
-if (!icon || icon.status !== "ready" || icon.path !== "src/assets/icons/browsercrew-128.png" || icon.sha256 !== "8bcec8327cb641996bddf9a0f5817c7e5014c3dd272ab74a25d40491d9023eb7") {
+if (!icon || icon.status !== "ready" || icon.path !== "src/assets/icons/browsercrew-128.png" || icon.sha256 !== "7d707768a259207a1a5963c8cf351f297ccef482153f50d14fd05abf0682ce09") {
   throw new Error("The reviewed 128x128 icon must be marked ready at its exact packaged path and digest.");
+}
+if (!String(icon.spec || "").includes("96x96") || !String(icon.spec || "").includes("16px transparent padding")) {
+  throw new Error("The reviewed 128x128 icon contract must preserve Chrome Web Store visible-artwork padding requirements.");
 }
 const promo = contract.requiredStoreAssets?.find((asset) => asset.id === "small_promo_440x280");
 if (!promo || promo.status !== "generated_by_ci" || promo.path !== "artifacts/store-media/browsercrew-small-promo-440x280.png") {
