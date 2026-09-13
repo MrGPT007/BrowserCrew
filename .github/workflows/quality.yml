@@ -91,6 +91,14 @@ jobs:
           name: skill-library-lifecycle-evidence
           path: artifacts/skill-library-lifecycle-smoke
           if-no-files-found: error
+      - name: Run post-v0.2 safe Skill import/export installed-extension smoke test
+        run: npm run skill-portable-smoke
+      - name: Upload safe Skill import/export evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: skill-portable-evidence
+          path: artifacts/skill-portable-smoke
+          if-no-files-found: error
       - name: Run post-v0.2 missed schedule review installed-extension smoke test
         run: npm run schedule-review-smoke
       - name: Upload missed schedule review evidence

@@ -32,6 +32,7 @@ const targets = [
   "watch-me-smoke.mjs",
   "skill-draft-review-smoke.mjs",
   "skill-library-lifecycle-smoke.mjs",
+  "skill-portable-smoke.mjs",
   "schedule-review-smoke.mjs",
   "schedule-setup-smoke.mjs"
 ];
