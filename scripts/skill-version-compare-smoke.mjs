@@ -82,12 +82,14 @@ try {
   report.extensionId = extensionId;
   await worker.evaluate(async (skills) => chrome.storage.local.set({ "browsercrew.skillLibrary.v1": skills }), [base, candidate, unrelated]);
 
-  const storageBefore = await worker.evaluate(async () => chrome.storage.local.get(null));
-  const permissionsBefore = await worker.evaluate(async () => chrome.permissions.getAll());
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
   await panel.getByRole("tab", { name: "Skills" }).click();
   await waitUntil(async () => await panel.locator('[data-skill-record="supplier-check@@1.1.0"]').count() === 1, "Candidate exact version should render in My Skills.");
+  await waitForStorageQuiescence(worker);
+  const storageBefore = await worker.evaluate(async () => chrome.storage.local.get(null));
+  const permissionsBefore = await worker.evaluate(async () => chrome.permissions.getAll());
+
   const card = panel.locator('[data-skill-record="supplier-check@@1.1.0"]');
   await card.getByRole("button", { name: "Compare versions" }).waitFor({ state: "visible", timeout: timeoutMs });
   pass("Every exact saved Skill version exposes read-only Compare without replacing lifecycle controls");
@@ -116,7 +118,7 @@ try {
 
   const storageAfter = await worker.evaluate(async () => chrome.storage.local.get(null));
   const permissionsAfter = await worker.evaluate(async () => chrome.permissions.getAll());
-  assert.deepEqual(storageAfter, storageBefore, "Read-only Compare must not mutate Skills, approvals, runs, or any durable state.");
+  assert.deepEqual(storageAfter, storageBefore, "Read-only Compare must not mutate Skills, approvals, runs, or any durable state after side-panel startup has settled.");
   assert.deepEqual(permissionsAfter, permissionsBefore, "Read-only Compare must not request or change Chrome permissions.");
   assert.equal(Array.isArray(storageAfter["browsercrew.skillRuns.v1"]) ? storageAfter["browsercrew.skillRuns.v1"].length : 0, 0, "Read-only Compare must not create a Skill run.");
   pass("Compare produced zero storage, approval, execution, and permission side effects");
@@ -146,6 +148,20 @@ try {
 }
 
 function pass(name) { report.checks.push({ name, at: new Date().toISOString() }); }
+async function waitForStorageQuiescence(worker) {
+  let previous = null;
+  let stableReads = 0;
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const current = JSON.stringify(await worker.evaluate(async () => chrome.storage.local.get(null)));
+    if (current === previous) stableReads += 1;
+    else stableReads = 0;
+    if (stableReads >= 2) return;
+    previous = current;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 150));
+  }
+  throw new Error("Timed out waiting for side-panel durable startup state to settle before Compare proof.");
+}
 async function prepareExtension(target) {
   await cp(repoRoot, target, { recursive: true, filter: (source) => {
     const relative = source.slice(repoRoot.length).replace(/^[/\\]/, "");
