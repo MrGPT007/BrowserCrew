@@ -34,6 +34,10 @@ globalThis.chrome = {
         if (keys == null) return Object.fromEntries(storage);
         const wanted = Array.isArray(keys) ? keys : typeof keys === "string" ? [keys] : Object.keys(keys);
         const result = Object.fromEntries(wanted.filter((key) => storage.has(key)).map((key) => [key, structuredClone(storage.get(key))]));
+        if (concurrentReviewBarrierEnabled && wanted.includes("browsercrew.scheduleRuns.v1") && wanted.includes("browsercrew.schedules.v1")) {
+          concurrentReviewBarrierEnabled = false;
+          concurrentReviewBarrierRelease();
+        }
         if (concurrentReviewBarrierEnabled && wanted.length === 1 && wanted[0] === "browsercrew.scheduleRuns.v1") {
           const gate = concurrentReviewBarrier;
           concurrentReviewReads += 1;
