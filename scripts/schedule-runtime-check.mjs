@@ -149,6 +149,26 @@ const alarmListener = listeners.alarm[0];
 const countTasksFor = (id) => taskCalls.filter((call) => call.schedule?.id === id).length;
 const runsFor = async (id) => (await runtime.listScheduleRuns(id));
 
+const forgedLastRunAt = "2040-01-01T00:00:00.000Z";
+const trustedLastRunAt = "2026-09-12T12:34:56.000Z";
+const metadataCreate = await runtime.saveSchedule(schedule("metadata-history", {
+  enabled: false,
+  nextRunAt: null,
+  lastRunAt: forgedLastRunAt
+}));
+assert.equal(metadataCreate.schedule.lastRunAt, null, "New schedule saves must ignore caller-supplied lastRunAt history.");
+let metadataSchedules = await runtime.listSchedules();
+const metadataIndex = metadataSchedules.findIndex((item) => item.id === "metadata-history");
+assert.ok(metadataIndex >= 0, "Metadata-history fixture must be persisted before edit testing.");
+metadataSchedules[metadataIndex] = { ...metadataSchedules[metadataIndex], lastRunAt: trustedLastRunAt };
+await chrome.storage.local.set({ [SCHEDULES_KEY]: metadataSchedules });
+const metadataEdit = await runtime.saveSchedule({
+  ...metadataCreate.schedule,
+  name: "metadata history edited",
+  lastRunAt: forgedLastRunAt
+});
+assert.equal(metadataEdit.schedule.lastRunAt, trustedLastRunAt, "Schedule edits must preserve runtime-owned stored lastRunAt history.");
+
 const pausedBefore = (await runtime.listScheduleRuns()).length;
 await alarmListener({ name: "browsercrew.schedule.paused-job", scheduledTime: Date.now() });
 assert.equal((await runtime.listScheduleRuns()).length, pausedBefore, "A disabled schedule alarm callback must create no receipt.");
@@ -236,6 +256,7 @@ for (const phrase of [
   "const scheduledFor = new Date(scheduledTime).toISOString()",
   "run.scheduledFor === scheduledFor",
   "if (duplicate) return",
+  "schedule.lastRunAt = index >= 0 ? schedules[index].lastRunAt ?? null : null",
   'status: "paused", reason: "TASK_PAUSED"',
   'status: "cancelled", reason: "TASK_CANCELLED"'
 ]) assert.ok(runtimeSource.includes(phrase), `Persistent scheduler contract missing: ${phrase}`);

@@ -98,6 +98,7 @@ export async function saveSchedule(input) {
   }
   const now = new Date().toISOString();
   schedule.createdAt = index >= 0 ? schedules[index].createdAt : schedule.createdAt || now;
+  schedule.lastRunAt = index >= 0 ? schedules[index].lastRunAt ?? null : null;
   schedule.updatedAt = now;
   schedule.nextRunAt = schedule.enabled ? new Date(nextRun(schedule)).toISOString() : null;
   if (index >= 0) schedules[index] = schedule;
