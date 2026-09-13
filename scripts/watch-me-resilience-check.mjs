@@ -100,6 +100,20 @@ assert.throws(() => recordWatchEvent(session, {
   downloadOrigin: "https://other.test"
 }), /approved site scope/);
 
+const smoke = await readFile("scripts/watch-me-resilience-smoke.mjs", "utf8");
+for (const phrase of [
+  "terminateServiceWorker(context, panel, extensionId)",
+  'session.send("Target.closeTarget"',
+  'session.send("Target.getTargets")',
+  "Closed BrowserCrew service-worker CDP target should disappear before recovery is tested.",
+  "waitForLiveWorker(context, extensionId, 45_000)",
+  "browserContext.serviceWorkers()",
+  "await candidate.evaluate(() => true)",
+  "Restart recovery must not duplicate earlier events.",
+  "Restart recovery must not duplicate the resumed event."
+]) assert.ok(smoke.includes(phrase), `Watch suspension/recovery proof missing: ${phrase}`);
+assert.equal(smoke.includes("async function waitForNextWorker"), false, "Watch resilience proof must not depend on Playwright emitting a brand-new serviceworker event after MV3 restart.");
+
 const workflow = await readFile(".github/workflows/quality.yml", "utf8");
 for (const phrase of [
   "npm run watch-me-resilience-smoke",

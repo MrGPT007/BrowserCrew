@@ -52,10 +52,10 @@ try {
   await waitUntil(async () => countClicks(await watchState(worker), "Before restart") === 1, "First semantic click should be recorded exactly once.");
   pass("Recorder captured a semantic click while ignoring a hostile synthetic hidden-field change");
 
-  const restartedWorker = waitForNextWorker(context, extensionId);
-  await terminateServiceWorker(context, panel, extensionId);
-  worker = await restartedWorker;
+  const closedTargetId = await terminateServiceWorker(context, panel, extensionId);
+  report.closedServiceWorkerTargetId = closedTargetId;
   await target.locator("#afterRestart").click();
+  worker = await waitForLiveWorker(context, extensionId, 45_000);
   await waitUntil(async () => countClicks(await watchState(worker), "After restart") === 1, "Recorder should reconnect after service-worker termination and deliver the next event once.", 45_000);
   const afterRestartState = await watchState(worker);
   assert.equal(countClicks(afterRestartState, "Before restart"), 1, "Restart recovery must not duplicate earlier events.");
@@ -137,13 +137,22 @@ function countClicks(state, label) {
 }
 function pass(name) { report.checks.push({ name, at: new Date().toISOString() }); }
 
-async function waitForNextWorker(browserContext, extensionId) {
-  return browserContext.waitForEvent("serviceworker", {
-    predicate: (candidate) => {
-      try { return new URL(candidate.url()).host === extensionId; } catch { return false; }
-    },
-    timeout: 45_000
-  });
+async function waitForLiveWorker(browserContext, extensionId, timeout = timeoutMs) {
+  let liveWorker = null;
+  await waitUntil(async () => {
+    for (const candidate of browserContext.serviceWorkers()) {
+      let sameExtension = false;
+      try { sameExtension = new URL(candidate.url()).host === extensionId; } catch {}
+      if (!sameExtension) continue;
+      try {
+        await candidate.evaluate(() => true);
+        liveWorker = candidate;
+        return true;
+      } catch {}
+    }
+    return false;
+  }, "BrowserCrew service worker should become live again after the page recorder reconnects.", timeout);
+  return liveWorker;
 }
 
 async function terminateServiceWorker(browserContext, page, extensionId) {
@@ -154,6 +163,11 @@ async function terminateServiceWorker(browserContext, page, extensionId) {
     assert.ok(target?.targetId, "Could not find the active BrowserCrew extension service-worker CDP target.");
     const result = await session.send("Target.closeTarget", { targetId: target.targetId });
     assert.equal(result?.success, true, "Chrome refused to terminate the extension service-worker target for the resilience proof.");
+    await waitUntil(async () => {
+      const after = await session.send("Target.getTargets");
+      return !after.targetInfos.some((item) => item.targetId === target.targetId);
+    }, "Closed BrowserCrew service-worker CDP target should disappear before recovery is tested.", 10_000);
+    return target.targetId;
   } finally {
     await session.detach().catch(() => {});
   }
