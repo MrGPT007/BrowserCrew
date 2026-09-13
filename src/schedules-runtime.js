@@ -280,8 +280,8 @@ export async function reviewMissedScheduleRun(runId, decision) {
     return { ok: false, run: receipt, error: { code: receipt.reason, message: "The schedule for this missed job no longer exists." } };
   }
 
-  const activeRun = runs.some((run) => run.id !== receipt.id && ["checking", "running"].includes(run.status));
-  const queuedRun = runs.some((run) => run.id !== receipt.id && run.status === "queued");
+  const activeRun = runs.some((run) => run.id !== receipt.id && run.scheduleId === receipt.scheduleId && ["checking", "running"].includes(run.status));
+  const queuedRun = runs.some((run) => run.id !== receipt.id && run.scheduleId === receipt.scheduleId && run.status === "queued");
   const concurrency = decideScheduleConcurrency(schedule, { activeRun, queuedRun });
   if (concurrency.action === "skip") {
     await settleWithoutDispatch(receipt, "skipped", concurrency.reason);
