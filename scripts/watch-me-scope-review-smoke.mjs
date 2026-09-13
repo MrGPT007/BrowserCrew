@@ -86,7 +86,7 @@ try {
   await target.bringToFront();
   await panel.evaluate(() => document.querySelector("#watchMeStopButton")?.click());
   await waitForText(panel.locator("#watchMeDraftResult"), "Draft ready for review");
-  const libraryBeforeApproval = await worker.evaluate(async () => (await chrome.storage.local.get("browsercrew.skillLibrary.v1"))["browsercrew.skillLibrary.v1"] || []);
+  const libraryBeforeApproval = await readSkillLibrary(worker);
   const draft = libraryBeforeApproval.find((item) => item.provenance?.source === "watch_me_demonstration");
   assert.ok(draft, "Scope-reviewed recording should save a draft Skill.");
   assert.equal(draft.status, "draft");
@@ -101,45 +101,113 @@ try {
   panel.once("dialog", (dialog) => dialog.accept());
   await approveButton.click();
   await waitUntil(async () => {
-    const items = await worker.evaluate(async () => (await chrome.storage.local.get("browsercrew.skillLibrary.v1"))["browsercrew.skillLibrary.v1"] || []);
+    const items = await readSkillLibrary(worker);
     return items.some((item) => item.id === draft.id && item.version === draft.version && item.status === "approved");
   }, "Recorded cross-site draft should require and accept exact-version approval.");
-  const approved = (await worker.evaluate(async () => (await chrome.storage.local.get("browsercrew.skillLibrary.v1"))["browsercrew.skillLibrary.v1"] || [])).find((item) => item.id === draft.id && item.version === draft.version);
+  const approved = (await readSkillLibrary(worker)).find((item) => item.id === draft.id && item.version === draft.version);
   pass("Cross-site recording remains a draft until the user explicitly approves that exact version");
 
   await target.goto(`${fixtureA.origin}/start`);
   await target.bringToFront();
-  const selected = await panel.evaluate(() => chrome.runtime.sendMessage({ type: "GET_ACTIVE_TAB" }));
+  let selected = await panel.evaluate(() => chrome.runtime.sendMessage({ type: "GET_ACTIVE_TAB" }));
   assert.equal(selected?.ok, true);
   assert.equal(new URL(selected.tab.url).origin, fixtureA.origin);
-  const grant = {
+  const crossSiteGrant = {
     origins: [fixtureA.origin, fixtureB.origin],
     actionClasses: ["read", "page_write_prepare"],
     dataDestinations: [],
     revoked: false,
     expiresAt: "2099-01-01T00:00:00.000Z"
   };
-  const replay = await runSkill(panel, { skillId: approved.id, version: approved.version, tabId: selected.tab.id, grant });
+  const replay = await runSkill(panel, { skillId: approved.id, version: approved.version, tabId: selected.tab.id, grant: crossSiteGrant });
   assert.equal(replay.ok, true, replay.error?.message || "Approved cross-site Skill should replay successfully.");
   await target.waitForURL(`${fixtureB.origin}/work`, { timeout: timeoutMs });
   await target.locator("#ready").waitFor({ state: "visible", timeout: timeoutMs });
   assert.equal((await target.locator("#ready").innerText()).trim(), "Cross-site ready");
   pass("Replay may cross only between the two reviewed origins and reaches the saved verified outcome");
 
-  const runs = await worker.evaluate(async () => (await chrome.storage.local.get("browsercrew.skillRuns.v1"))["browsercrew.skillRuns.v1"] || []);
+  const runs = await readSkillRuns(worker);
   const run = runs.find((item) => item.id === replay.run?.id);
   assert.equal(run?.status, "completed");
   assert.equal(run?.receipt?.status, "completed");
   assert.deepEqual(run?.receipt?.skillRef, { id: approved.id, version: approved.version });
   pass("Cross-site replay produces a durable exact-version completed run receipt");
 
+  const existingSkillRefs = new Set((await readSkillLibrary(worker)).map((item) => `${item.id}@@${item.version}`));
+  await target.goto(`${fixtureA.origin}/wait`);
+  await target.bringToFront();
+  await panel.evaluate(() => document.querySelector("#watchMeStartButton")?.click());
+  await waitForText(panel.locator("#watchMeBadge"), "Watching");
+  await panel.locator("#watchMeWaitControl").waitFor({ state: "visible", timeout: timeoutMs });
+  pass("Watch Me exposes an explicit observable wait control only while recording is active");
+
+  await target.locator("#prepare").click();
+  await target.locator("#waitReady").waitFor({ state: "visible", timeout: timeoutMs });
+  await panel.locator("#watchMeWaitText").fill("Export ready");
+  await panel.locator("#watchMeRememberWaitButton").click();
+  await waitUntil(async () => (await readWatchState(worker)).session.events.some((event) => event.kind === "waitFor" && event.expect?.visibleText === "Export ready"), "Remember this wait should persist a semantic waitFor step only after the text is actually visible.");
+  const waitState = await readWatchState(worker);
+  const waitEvent = waitState.session.events.find((event) => event.kind === "waitFor" && event.expect?.visibleText === "Export ready");
+  assert.equal(waitEvent?.origin, fixtureA.origin);
+  assert.equal(waitEvent?.pageUrl, `${fixtureA.origin}/wait`);
+  pass("Remember this wait stores only the reviewed visible-text condition on the current approved origin");
+
+  await target.bringToFront();
+  await target.locator("#previewWait").click();
+  await target.locator("#waitDone").waitFor({ state: "visible", timeout: timeoutMs });
+  await panel.locator("#watchMeCompletionText").fill("Wait workflow done");
+  await target.bringToFront();
+  await panel.evaluate(() => document.querySelector("#watchMeStopButton")?.click());
+  await waitUntil(async () => {
+    const items = await readSkillLibrary(worker);
+    return items.some((item) => !existingSkillRefs.has(`${item.id}@@${item.version}`) && item.status === "draft" && item.provenance?.source === "watch_me_demonstration");
+  }, "Wait workflow should save a new draft Skill.");
+  const waitDraft = (await readSkillLibrary(worker)).find((item) => !existingSkillRefs.has(`${item.id}@@${item.version}`) && item.status === "draft" && item.provenance?.source === "watch_me_demonstration");
+  assert.ok(waitDraft, "Wait workflow draft should be durable.");
+  assert.deepEqual(waitDraft.allowedOrigins, [fixtureA.origin]);
+  assert.ok(waitDraft.steps.some((step) => step.kind === "waitFor" && step.expect?.visibleText === "Export ready"));
+  assert.equal(waitDraft.steps.at(-1)?.kind, "verify");
+  assert.equal(waitDraft.steps.at(-1)?.expect?.visibleText, "Wait workflow done");
+  pass("Recorded wait becomes an inspectable draft Skill step and does not grant authority by itself");
+
+  const waitApprove = panel.locator(`#versionedSkillList [data-approve-skill="${waitDraft.id}"][data-skill-version="${waitDraft.version}"]`);
+  panel.once("dialog", (dialog) => dialog.accept());
+  await waitApprove.click();
+  await waitUntil(async () => {
+    const items = await readSkillLibrary(worker);
+    return items.some((item) => item.id === waitDraft.id && item.version === waitDraft.version && item.status === "approved");
+  }, "Wait workflow exact version should require explicit approval before replay.");
+  const waitApproved = (await readSkillLibrary(worker)).find((item) => item.id === waitDraft.id && item.version === waitDraft.version);
+
+  await target.goto(`${fixtureA.origin}/wait`);
+  await target.bringToFront();
+  selected = await panel.evaluate(() => chrome.runtime.sendMessage({ type: "GET_ACTIVE_TAB" }));
+  assert.equal(selected?.ok, true);
+  const waitGrant = {
+    origins: [fixtureA.origin],
+    actionClasses: ["read", "page_write_prepare"],
+    dataDestinations: [],
+    revoked: false,
+    expiresAt: "2099-01-01T00:00:00.000Z"
+  };
+  const waitReplay = await runSkill(panel, { skillId: waitApproved.id, version: waitApproved.version, tabId: selected.tab.id, grant: waitGrant });
+  assert.equal(waitReplay.ok, true, waitReplay.error?.message || "Approved wait workflow should replay successfully.");
+  await target.locator("#waitDone").waitFor({ state: "visible", timeout: timeoutMs });
+  assert.equal(await target.locator("body").getAttribute("data-preview-before-ready"), "0", "Preview must not run before the recorded wait condition becomes visible.");
+  const waitRun = (await readSkillRuns(worker)).find((item) => item.id === waitReplay.run?.id);
+  assert.equal(waitRun?.status, "completed");
+  assert.equal(waitRun?.receipt?.status, "completed");
+  assert.ok(waitRun?.receipt?.steps?.some((step) => step.kind === "waitFor" && step.status === "completed"), "Durable replay receipt must prove the waitFor step completed before the later action.");
+  pass("Wait workflow replay completed its recorded wait before Preview and saved a durable completed wait step");
+
   await panel.screenshot({ path: join(artifactDir, "watch-me-scope-review.png"), fullPage: true });
   report.skill = { id: approved.id, version: approved.version, allowedOrigins: approved.allowedOrigins, stepCount: approved.steps.length };
   report.replay = { runId: replay.run?.id, status: replay.run?.status };
+  report.wait = { skillId: waitApproved.id, version: waitApproved.version, runId: waitReplay.run?.id, status: waitReplay.run?.status, visibleText: "Export ready" };
   report.ok = true;
   report.completedAt = new Date().toISOString();
   await writeFile(join(artifactDir, "report.json"), JSON.stringify(report, null, 2));
-  console.log("BrowserCrew Watch Me explicit cross-site scope review smoke checks passed.");
+  console.log("BrowserCrew Watch Me explicit cross-site scope review and observable wait smoke checks passed.");
   for (const check of report.checks) console.log(`✓ ${check.name}`);
 } catch (error) {
   report.ok = false;
@@ -160,12 +228,20 @@ async function readWatchState(worker) {
   return worker.evaluate(async () => (await chrome.storage.local.get("browsercrew.watchMe.v1"))["browsercrew.watchMe.v1"]);
 }
 
+async function readSkillLibrary(worker) {
+  return worker.evaluate(async () => (await chrome.storage.local.get("browsercrew.skillLibrary.v1"))["browsercrew.skillLibrary.v1"] || []);
+}
+
+async function readSkillRuns(worker) {
+  return worker.evaluate(async () => (await chrome.storage.local.get("browsercrew.skillRuns.v1"))["browsercrew.skillRuns.v1"] || []);
+}
+
 function runSkill(panel, { skillId, version, tabId, grant }) {
   return panel.evaluate(async ({ skillId, version, tabId, grant }) => {
     const port = chrome.runtime.connect({ name: "browsercrew-skills" });
     const requestId = crypto.randomUUID();
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => { try { port.disconnect(); } catch {} reject(new Error("Cross-site replay timed out.")); }, 20_000);
+      const timeout = setTimeout(() => { try { port.disconnect(); } catch {} reject(new Error("Watch Me replay timed out.")); }, 20_000);
       port.onMessage.addListener((message) => {
         if (message?.requestId !== requestId) return;
         clearTimeout(timeout);
@@ -191,13 +267,17 @@ async function prepareTestExtension(target, origins) {
 
 function startFixtureServer(kind) {
   return new Promise((resolveStart, rejectStart) => {
-    const server = createServer((_req, res) => {
+    const server = createServer((req, res) => {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       if (kind === "work") {
         res.end(`<!doctype html><html><body><h1>Second site</h1><button id="preview" type="button">Preview cross-site result</button><p id="ready" hidden>Cross-site ready</p><script>document.querySelector('#preview').addEventListener('click',()=>{document.querySelector('#ready').hidden=false;});</script></body></html>`);
-      } else {
-        res.end(`<!doctype html><html><body><h1>First site</h1><p>Start the recorded workflow here.</p></body></html>`);
+        return;
       }
+      if (req.url === "/wait") {
+        res.end(`<!doctype html><html><body data-preview-before-ready="0"><h1>Wait workflow</h1><button id="prepare" type="button">Prepare export</button><p id="waitReady" hidden>Export ready</p><button id="previewWait" type="button">Preview result</button><p id="waitDone" hidden>Wait workflow done</p><script>const ready=document.querySelector('#waitReady');document.querySelector('#prepare').addEventListener('click',()=>{setTimeout(()=>{ready.hidden=false;},700);});document.querySelector('#previewWait').addEventListener('click',()=>{if(ready.hidden){document.body.dataset.previewBeforeReady=String(Number(document.body.dataset.previewBeforeReady||'0')+1);return;}document.querySelector('#waitDone').hidden=false;});</script></body></html>`);
+        return;
+      }
+      res.end(`<!doctype html><html><body><h1>First site</h1><p>Start the recorded workflow here.</p></body></html>`);
     });
     server.once("error", rejectStart);
     server.listen(0, "127.0.0.1", () => {
