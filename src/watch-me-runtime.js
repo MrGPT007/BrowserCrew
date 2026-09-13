@@ -5,6 +5,7 @@ import { saveSkillDraft } from "./skills-runtime.js";
 const WATCH_STATE_KEY = "browsercrew.watchMe.v1";
 const CONTROL_PORT = "browsercrew-watch-control";
 const EVENT_PORT = "browsercrew-watch-events";
+const MAX_WATCH_ORIGINS = 8;
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name === CONTROL_PORT) bindControlPort(port);
@@ -44,6 +45,7 @@ async function handleControl(message) {
     case "start": return startWatching(message.tab);
     case "pause": return setWatchStatus("paused");
     case "resume": return resumeWatching();
+    case "approveScope": return approveScopeChange();
     case "markWait": return markWaitForText(message.visibleText);
     case "stop": return finishWatching(message.draft || {});
     case "get": return { ok: true, state: await getWatchState() };
@@ -59,13 +61,47 @@ export async function startWatching(tab) {
   if (!hasAccess) throw coded("WATCH_SITE_ACCESS_REQUIRED", "Approve access to this site before BrowserCrew starts watching.");
 
   const existing = await getWatchState();
-  if (existing?.session?.status === "watching") throw coded("WATCH_ALREADY_RUNNING", "BrowserCrew is already watching a demonstration. Stop it before starting another one.");
+  if (["watching", "paused", "scope_review"].includes(existing?.session?.status)) throw coded("WATCH_ALREADY_RUNNING", "BrowserCrew is already watching a demonstration. Stop it before starting another one.");
 
   const session = createWatchSession({ id: crypto.randomUUID(), tabId: tab.id, origin: url.origin, startedAt: new Date().toISOString() });
   const state = { schemaVersion: 1, session, tabTitle: String(tab.title || "Current page").slice(0, 160), updatedAt: new Date().toISOString() };
   await persistWatchState(state);
   await installPageRecorder(tab.id);
   return { ok: true, state };
+}
+
+export async function approveScopeChange() {
+  const state = await requireWatchState();
+  if (state.session.status !== "scope_review") throw coded("WATCH_SCOPE_REVIEW_NOT_PENDING", "There is no new website waiting for Watch Me approval.");
+  const tabId = state.session.approvedTabs[0];
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab?.url || !/^https?:/.test(tab.url)) throw coded("WATCH_PAGE_REQUIRED", "The watched tab is not on a normal website anymore.");
+  const url = new URL(tab.url);
+  const pendingOrigin = state.session.scopeReview?.origin || latestScopeWarning(state.session)?.origin || null;
+  if (!pendingOrigin || pendingOrigin !== url.origin) throw coded("WATCH_SCOPE_CHANGED", "The watched tab changed again. Review the website that is open now before recording continues.");
+  const hasAccess = await chrome.permissions.contains({ origins: [`${url.origin}/*`] });
+  if (!hasAccess) throw coded("WATCH_SITE_ACCESS_REQUIRED", "Approve Chrome access to this website before adding it to this recording.");
+
+  const alreadyApproved = state.session.approvedOrigins.includes(url.origin);
+  if (!alreadyApproved && state.session.approvedOrigins.length >= MAX_WATCH_ORIGINS) throw coded("WATCH_SCOPE_LIMIT", `Watch Me can include up to ${MAX_WATCH_ORIGINS} explicitly approved websites in one recording.`);
+  const approvedOrigins = alreadyApproved ? [...state.session.approvedOrigins] : [...state.session.approvedOrigins, url.origin];
+  let session = { ...state.session, status: "watching", approvedOrigins, scopeReview: null };
+  const last = session.events.at(-1);
+  if (last?.kind !== "navigate" || last.pageUrl !== url.href) {
+    session = recordWatchEvent(session, {
+      id: `step-${String(session.events.length + 1).padStart(3, "0")}`,
+      kind: "navigate",
+      tabId,
+      origin: url.origin,
+      pageUrl: url.href,
+      url: url.href,
+      occurredAt: new Date().toISOString()
+    });
+  }
+  const next = { ...state, session, tabTitle: String(tab.title || "Current page").slice(0, 160), updatedAt: new Date().toISOString() };
+  await persistWatchState(next);
+  await installPageRecorder(tabId);
+  return { ok: true, state: next, approvedOrigin: url.origin, addedOrigin: !alreadyApproved };
 }
 
 export async function finishWatching(draftInput = {}) {
@@ -76,11 +112,14 @@ export async function finishWatching(draftInput = {}) {
   const completionText = String(draftInput.completionText || "").replace(/\s+/g, " ").trim().slice(0, 160);
   if (!completionText) throw coded("WATCH_COMPLETION_REQUIRED", "Add a short piece of text that is visible when this job has worked.");
   const tabId = session.approvedTabs[0];
-  const expectedOrigin = session.approvedOrigins[0];
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab?.url || !/^https?:/.test(tab.url)) throw coded("WATCH_PAGE_REQUIRED", "The watched tab is not on a normal website anymore.");
+  const expectedOrigin = new URL(tab.url).origin;
+  if (!session.approvedOrigins.includes(expectedOrigin)) throw coded("WATCH_REVIEW_REQUIRED", "Review the new website before using it as the recorded job's completion page.");
   const completion = await verifyCompletionText(tabId, expectedOrigin, completionText);
   if (!completion.visible) throw coded("WATCH_COMPLETION_NOT_VISIBLE", "That success text is not visible on the watched page right now. Finish the job first, then choose text that proves it worked.");
 
-  session = { ...session, status: "watching" };
+  session = { ...session, status: "watching", scopeReview: null };
   session = recordWatchEvent(session, {
     id: `step-${String(session.events.length + 1).padStart(3, "0")}`,
     kind: "verify",
@@ -113,7 +152,10 @@ export async function markWaitForText(visibleText) {
   const text = String(visibleText || "").replace(/\s+/g, " ").trim().slice(0, 160);
   if (!text) throw coded("WATCH_WAIT_TEXT_REQUIRED", "Enter a short visible status or heading to wait for.");
   const tabId = state.session.approvedTabs[0];
-  const expectedOrigin = state.session.approvedOrigins[0];
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab?.url || !/^https?:/.test(tab.url)) throw coded("WATCH_PAGE_REQUIRED", "The watched tab is not on a normal website anymore.");
+  const expectedOrigin = new URL(tab.url).origin;
+  if (!state.session.approvedOrigins.includes(expectedOrigin)) throw coded("WATCH_REVIEW_REQUIRED", "Review the new website before adding a wait condition there.");
   const observation = await verifyCompletionText(tabId, expectedOrigin, text);
   if (!observation.visible) throw coded("WATCH_WAIT_TEXT_NOT_VISIBLE", "That text is not visible on the watched page yet. Wait until it appears, then add the wait condition.");
   return appendPageEvent(tabId, {
@@ -139,17 +181,29 @@ export async function appendPageEvent(tabId, rawEvent) {
 
 async function handleNavigation(tabId, href) {
   const state = await getWatchState();
-  if (!state?.session || !state.session.approvedTabs.includes(tabId) || state.session.status !== "watching") return;
+  if (!state?.session || !state.session.approvedTabs.includes(tabId) || !["watching", "scope_review"].includes(state.session.status)) return;
   const url = new URL(href);
+  if (state.session.status === "scope_review") {
+    const previous = state.session.scopeReview?.origin || null;
+    const warning = previous === url.origin ? state.session.warnings : [...state.session.warnings, { code: "ORIGIN_CHANGED", origin: url.origin, at: new Date().toISOString() }];
+    await persistWatchState({
+      ...state,
+      session: { ...state.session, scopeReview: { origin: url.origin, at: new Date().toISOString() }, warnings: warning },
+      updatedAt: new Date().toISOString()
+    });
+    return;
+  }
   if (!state.session.approvedOrigins.includes(url.origin)) {
+    const now = new Date().toISOString();
     const next = {
       ...state,
       session: {
         ...state.session,
         status: "scope_review",
-        warnings: [...state.session.warnings, { code: "ORIGIN_CHANGED", origin: url.origin, at: new Date().toISOString() }]
+        scopeReview: { origin: url.origin, at: now },
+        warnings: [...state.session.warnings, { code: "ORIGIN_CHANGED", origin: url.origin, at: now }]
       },
-      updatedAt: new Date().toISOString()
+      updatedAt: now
     };
     await persistWatchState(next);
     return;
@@ -173,7 +227,8 @@ async function resumeWatching() {
   if (state.session.status !== "paused") throw coded("WATCH_REVIEW_REQUIRED", "If the page changed to a new site, review the new scope instead of resuming automatically.");
   const tabId = state.session.approvedTabs[0];
   const tab = await chrome.tabs.get(tabId);
-  if (!tab?.url || new URL(tab.url).origin !== state.session.approvedOrigins[0]) throw coded("WATCH_SCOPE_CHANGED", "The watched tab is on a different site. Start a new recording or approve the new scope first.");
+  if (!tab?.url || !/^https?:/.test(tab.url)) throw coded("WATCH_PAGE_REQUIRED", "The watched tab is not on a normal website anymore.");
+  if (!state.session.approvedOrigins.includes(new URL(tab.url).origin)) throw coded("WATCH_SCOPE_CHANGED", "The watched tab is on a different site. Review that site before recording continues.");
   const next = { ...state, session: { ...state.session, status: "watching" }, updatedAt: new Date().toISOString() };
   await persistWatchState(next);
   await installPageRecorder(tabId);
@@ -215,6 +270,10 @@ async function requireWatchState() {
 
 async function persistWatchState(state) {
   await chrome.storage.local.set({ [WATCH_STATE_KEY]: state });
+}
+
+function latestScopeWarning(session) {
+  return [...(session?.warnings || [])].reverse().find((item) => item?.code === "ORIGIN_CHANGED") || null;
 }
 
 function normalizeSkillId(value) {

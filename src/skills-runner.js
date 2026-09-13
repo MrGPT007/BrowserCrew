@@ -24,7 +24,7 @@ export async function runApprovedSkill({ skill, inputValues = {}, tabId, grant, 
     assertNotAborted(signal);
     if (Date.now() - startedAt > skill.budgets.maxMinutes * 60_000) throw coded("SKILL_TIME_BUDGET", "This skill reached its approved time budget.");
     const tab = await chrome.tabs.get(tabId);
-    assertTabInScope(tab, skill.allowedOrigins, step.origin);
+    assertTabInScope(tab, skill.allowedOrigins, step.kind === "navigate" ? null : step.origin);
     const stepReceipt = { id: step.id, kind: step.kind, startedAt: new Date().toISOString(), status: "running" };
     receipt.steps.push(stepReceipt);
     await onEvent({ type: "skill.step.intent", skillRef: receipt.skillRef, step: safeStepSummary(step), tab: safeTab(tab) });
