@@ -110,6 +110,14 @@ While an active grant is referenced, ordinary edits cannot silently move that au
 
 This permission remains pre-activation data: approving or revoking it creates no alarm and no schedule-run receipt, and the schedule stays disabled. Future activation must still revalidate expiry/revocation, exact provider identity, exact Skill version, scope, and the freshly re-resolved resource immediately before dispatch.
 
+### Provider and starting-resource resolvers
+
+`src/schedule-resolvers.js` contains pre-activation production resolver primitives without wiring them into service-worker boot. The provider resolver reads only the durable named connection registry and returns the minimal metadata the dispatcher needs: exact connection ID, tested connected/unavailable state, explicit stored capability metadata, kind/model, and last-tested time. It does not expose the connection endpoint or read session-only provider secrets. Missing capability metadata is treated as an empty capability set rather than guessed support, so capability-requiring Skills remain blocked until that capability has actually been recorded.
+
+The starting-resource resolver requires Chrome site access that is already granted for the exact reviewed origin, then searches open tabs for the **exact reviewed canonical URL**. Zero matches are stale; multiple exact matches are ambiguous; neither case falls back to the active tab. A tab ID is returned only as fresh run-time state and is never persisted back into the schedule or grant.
+
+Semantic resource IDs are stricter still. If `allowedResources` / `expectedResources` are non-empty, the resolver requires an explicit live resource-ID verifier. It never treats saved resource identifiers as proof that those resources are still present. Until BrowserCrew has a real verifier for a resource type, that scheduled run remains blocked with `SCHEDULE_RESOURCE_ID_RESOLVER_REQUIRED`.
+
 ### Fail-closed schedule dispatcher
 
 `src/schedule-dispatcher.js` is the pre-activation bridge from a validated schedule to the exact approved Skill executor. It is intentionally not imported or booted by the production service worker while v0.2 remains active.
@@ -134,15 +142,16 @@ The dispatcher performs an initial readiness pass and then re-resolves provider,
 - `src/schedule-setup-ui.js` — prepare/edit/delete UX with exact Skill/provider/scope/budget/history details while activation controls remain locked.
 - `src/schedule-prepared-metadata.js` / `src/schedule-binding-ui.js` — canonical starting-page review plus an inert, exact-Skill authority plan with no tab ID and no grant.
 - `src/schedule-grants-contract.js` / `src/schedule-grants-runtime.js` / `src/schedule-grants-ui.js` — explicit expiring schedule permission approval/revocation pinned to exact schedule, provider, Skill and scope while schedules remain disabled.
+- `src/schedule-resolvers.js` — exact named-provider and exact reviewed-page resolver primitives with existing-site-permission checks, no active-tab fallback, and fail-closed semantic-resource handling. It is not wired into production scheduler boot yet.
 - `src/schedule-dispatcher.js` — fail-closed readiness/execution bridge for exact approved Skills. It is not wired into production boot yet.
-- installed-extension coverage proves Watch Me, Skill lifecycle/version/Test/Run, missed-run review, prepared schedules, starting-page binding, durable grant replacement/revocation, scheduler restart behavior, and scheduled normal-task Stop/Pause on current Chrome and pinned Chrome 152.
+- installed-extension coverage proves Watch Me, Skill lifecycle/version/Test/Run, missed-run review, prepared schedules, starting-page binding, durable grant replacement/revocation, provider/resource resolution, scheduler restart behavior, and scheduled normal-task Stop/Pause on current Chrome and pinned Chrome 152.
 
 ## Remaining activation boundary
 
 Before a post-v0.2 scheduling release can turn this on, BrowserCrew still needs the intentionally deferred activation slice:
 
-1. implement production resolvers for the named provider, exact active grant, and saved starting-resource binding;
-2. wire `createScheduleSkillDispatcher(...)` into scheduler boot;
+1. supply real semantic resource-ID verifiers for any scheduled Skill that declares non-empty `allowedResources`; unsupported resource types remain blocked;
+2. compose the named-provider resolver, active-grant resolver, starting-resource resolver, and `createScheduleSkillDispatcher(...)` into scheduler boot;
 3. add `alarms` to the post-v0.2 manifest and update Web Store permission disclosures;
 4. enable Run now / Pause schedule controls against the live scheduler; and
 5. run the complete current + previous-stable release matrix again on the activation candidate.

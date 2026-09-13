@@ -131,6 +131,14 @@ jobs:
           name: schedule-setup-evidence
           path: artifacts/schedule-setup-smoke
           if-no-files-found: error
+      - name: Run post-v0.2 schedule provider/resource resolver installed-extension smoke test
+        run: npm run schedule-resolvers-smoke
+      - name: Upload schedule provider/resource resolver evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-resolvers-evidence
+          path: artifacts/schedule-resolvers-smoke
+          if-no-files-found: error
       - name: Run post-v0.2 scheduled task Stop/Pause installed-extension smoke test
         run: npm run schedule-control-smoke
       - name: Upload scheduled task Stop/Pause evidence

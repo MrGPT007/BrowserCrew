@@ -34,6 +34,7 @@ const targets = [
   "schedule-setup-smoke.mjs",
   "schedule-binding-smoke.mjs",
   "schedule-grants-smoke.mjs",
+  "schedule-resolvers-smoke.mjs",
   "schedule-control-smoke.mjs"
 ];
 
@@ -42,6 +43,7 @@ await execFileAsync(process.execPath, ["--check", "scripts/previous-stable-runne
 await execFileAsync(process.execPath, ["--check", "scripts/schedule-control-smoke.mjs"]);
 await execFileAsync(process.execPath, ["--check", "scripts/schedule-binding-smoke.mjs"]);
 await execFileAsync(process.execPath, ["--check", "scripts/schedule-grants-smoke.mjs"]);
+await execFileAsync(process.execPath, ["--check", "scripts/schedule-resolvers-smoke.mjs"]);
 await execFileAsync(process.execPath, ["--check", "scripts/schedule-control-worker-bootstrap.js"]);
 
 const scheduleControlBootstrap = await readFile("scripts/schedule-control-worker-bootstrap.js", "utf8");
@@ -95,6 +97,8 @@ for (const phrase of [
   "schedule-review-evidence",
   "npm run schedule-setup-smoke",
   "schedule-setup-evidence",
+  "npm run schedule-resolvers-smoke",
+  "schedule-resolvers-evidence",
   "npm run schedule-control-smoke",
   "schedule-control-evidence"
 ]) if (!workflow.includes(phrase)) throw new Error(`Quality workflow previous-stable contract missing: ${phrase}`);
@@ -120,6 +124,7 @@ const setupSmoke = String(pkg.scripts?.["schedule-setup-smoke"] || "");
 if (!setupSmoke.includes("node scripts/schedule-setup-smoke.mjs") || !setupSmoke.includes("node scripts/schedule-binding-smoke.mjs") || !setupSmoke.includes("node scripts/schedule-grants-smoke.mjs")) throw new Error("schedule-setup-smoke must keep setup, starting-page binding, and durable grant review coverage together on current Chrome.");
 if (pkg.scripts?.["schedule-binding-smoke"] !== "node scripts/schedule-binding-smoke.mjs") throw new Error("schedule-binding-smoke must stay directly runnable for Chrome 152 coverage.");
 if (pkg.scripts?.["schedule-grants-smoke"] !== "node scripts/schedule-grants-smoke.mjs") throw new Error("schedule-grants-smoke must stay directly runnable for Chrome 152 coverage.");
+if (pkg.scripts?.["schedule-resolvers-smoke"] !== "node scripts/schedule-resolvers-smoke.mjs") throw new Error("schedule-resolvers-smoke must stay directly runnable for current and Chrome 152 coverage.");
 if (pkg.scripts?.["schedule-control-smoke"] !== "node scripts/schedule-control-smoke.mjs") throw new Error("schedule-control-smoke must stay directly runnable for current and Chrome 152 coverage.");
 if (!String(pkg.scripts?.check || "").includes("previous-stable-check.mjs")) throw new Error("npm run check must include previous-stable contracts.");
 
