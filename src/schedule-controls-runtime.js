@@ -3,7 +3,6 @@ import {
   listScheduleRuns,
   listSchedules,
   reviewMissedScheduleRun,
-  scheduleExecutionSnapshot,
   setScheduleEnabled
 } from "./schedules-runtime.js";
 import { withScheduleRunHistoryMutation } from "./schedule-run-history-mutation.js";
@@ -45,7 +44,6 @@ export async function runScheduleNow(scheduleId) {
     schemaVersion: 1,
     scheduleId: schedule.id,
     skillRef: structuredClone(schedule.skillRef),
-    scheduleSnapshot: scheduleExecutionSnapshot(schedule),
     scheduledFor: now,
     firedAt: now,
     latenessMs: 0,
@@ -65,7 +63,7 @@ export async function runScheduleNow(scheduleId) {
   });
 
   try {
-    const result = await reviewMissedScheduleRun(receipt.id, "run_once");
+    const result = await reviewMissedScheduleRun(receipt.id, "run_once", schedule);
     return { ...result, manual: true };
   } catch (error) {
     if (error?.code === "SCHEDULE_DISPATCH_REQUIRED") await removeManualReceipt(receipt.id);
