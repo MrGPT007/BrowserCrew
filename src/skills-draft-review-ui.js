@@ -113,6 +113,7 @@ function createDraftEditor(skill) {
 
   editor.append(sectionHeading("RECORDED STEPS", "Keep only the steps you trust"));
   editor.append(helper("Change the plain-language description or remove a recorded step. Semantic targets cannot be changed here, and site/action scope can only be reduced."));
+  editor.append(helper("A fragile target stays blocked from approval until you either remove that step or explicitly confirm that you reviewed its recorded target."));
   skill.steps.forEach((step, index) => editor.append(createStepEditor(step, index === skill.steps.length - 1)));
 
   const row = document.createElement("div");
@@ -142,17 +143,13 @@ function createScopeEditor(skill) {
   const siteHeading = document.createElement("strong");
   siteHeading.textContent = "Recorded websites";
   sites.append(siteHeading);
-  for (const origin of skill.allowedOrigins || []) {
-    sites.append(scopeChoice(origin, "scopeOrigin", origin, `Website: ${origin}`));
-  }
+  for (const origin of skill.allowedOrigins || []) sites.append(scopeChoice(origin, "scopeOrigin", origin, `Website: ${origin}`));
 
   const actions = document.createElement("div");
   const actionHeading = document.createElement("strong");
   actionHeading.textContent = "Recorded actions";
   actions.append(actionHeading);
-  for (const action of skill.actionClasses || []) {
-    actions.append(scopeChoice(action, "scopeAction", action, actionLabel(action)));
-  }
+  for (const action of skill.actionClasses || []) actions.append(scopeChoice(action, "scopeAction", action, actionLabel(action)));
 
   wrap.append(sites, actions);
   return wrap;
@@ -218,6 +215,25 @@ function createStepEditor(step, finalStep) {
   heading.append(strong);
   wrap.append(heading);
 
+  if (step.review?.stability === "fragile") {
+    const warning = helper(step.review.reason || "This recorded target may be fragile. Review it before approval.");
+    warning.dataset.fragileStepWarning = "true";
+    wrap.append(warning);
+    if (step.review.unresolved === true) {
+      const confirmLabel = document.createElement("label");
+      confirmLabel.className = "field-label";
+      const confirm = document.createElement("input");
+      confirm.type = "checkbox";
+      confirm.dataset.confirmFragileStep = "true";
+      confirmLabel.append(confirm, document.createTextNode(" I reviewed this fragile recorded target and want to keep this step"));
+      wrap.append(confirmLabel);
+    } else {
+      const reviewed = helper("Fragile target reviewed for this exact draft version.");
+      reviewed.dataset.fragileStepReviewed = "true";
+      wrap.append(reviewed);
+    }
+  }
+
   const purposeLabel = document.createElement("label");
   purposeLabel.className = "field-label";
   purposeLabel.textContent = "What this step does";
@@ -262,7 +278,8 @@ async function saveDraftReview(button) {
     for (const row of editor.querySelectorAll("[data-draft-step]")) {
       stepEdits[row.dataset.draftStep] = {
         purpose: row.querySelector("[data-step-purpose]")?.value || "",
-        remove: row.querySelector("[data-keep-step]")?.checked === false
+        remove: row.querySelector("[data-keep-step]")?.checked === false,
+        confirmTarget: row.querySelector("[data-confirm-fragile-step]")?.checked === true
       };
     }
     const scopeEdits = {
@@ -309,7 +326,8 @@ function updateCard(card, skill) {
   if (paragraph) paragraph.textContent = skill.description;
   if (small) {
     const finalCheck = skill.steps?.at(-1)?.expect?.visibleText;
-    small.textContent = `Needs review · v${skill.version} · ${skill.steps?.length || 0} steps${finalCheck ? ` · checks “${finalCheck}”` : ""}`;
+    const unresolved = skill.steps?.filter((step) => step?.review?.unresolved === true).length || 0;
+    small.textContent = `Needs review · v${skill.version} · ${skill.steps?.length || 0} steps${unresolved ? ` · ${unresolved} target${unresolved === 1 ? "" : "s"} still needs review` : ""}${finalCheck ? ` · checks “${finalCheck}”` : ""}`;
   }
 }
 

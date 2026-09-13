@@ -42,6 +42,10 @@ export function reviewSkillDraft(skill, { title, description, inputEdits = {}, s
     if (Object.prototype.hasOwnProperty.call(edit, "purpose")) {
       copy.purpose = normalizeText(edit.purpose, 240, `Description for ${step.id}`);
     }
+    if (edit.confirmTarget === true) {
+      if (copy.review?.unresolved !== true) throw new Error(`Step ${step.id} does not have an unresolved recorded target to confirm.`);
+      copy.review = { ...copy.review, unresolved: false };
+    }
     reviewedSteps.push(copy);
   }
 

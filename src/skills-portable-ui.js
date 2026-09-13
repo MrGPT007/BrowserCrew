@@ -29,7 +29,7 @@ function createPortableControls() {
       <button class="button button-small tactile" id="skillImportButton" type="button">Import Skill JSON</button>
       <input id="skillImportFile" type="file" accept=".json,application/json" hidden />
     </div>
-    <p class="helper">Imported Skill files are untrusted. BrowserCrew shows their requested sites, resources, actions, provider needs, and data sharing first, then saves them only as a new draft for review.</p>`;
+    <p class="helper">Imported Skill files are untrusted. BrowserCrew shows their requested sites, resources, actions, provider needs, data sharing, and unresolved recorded targets first, then saves them only as a new draft for review.</p>`;
   return wrap;
 }
 
@@ -133,6 +133,11 @@ function renderImportPreview(preview) {
   importPanel.append(scopeSection("Provider capabilities", preview.providerCapabilities, "No provider capability required."));
   importPanel.append(scopeSection("Data destinations", preview.dataDestinations, "No external data destinations."));
   importPanel.append(helper(`${preview.stepCount} semantic steps · ${preview.inputCount} runtime inputs · budget up to ${preview.budgets.maxSteps} steps / ${preview.budgets.maxMinutes} minutes.`));
+  if (preview.unresolvedStepCount) {
+    importPanel.append(helper(`${preview.unresolvedStepCount} recorded target${preview.unresolvedStepCount === 1 ? " still needs" : "s still need"} review before this draft can be approved or run. Fragile-step review state is preserved by import.`));
+  } else if (preview.fragileStepCount) {
+    importPanel.append(helper(`${preview.fragileStepCount} fragile recorded target${preview.fragileStepCount === 1 ? " has" : "s have"} already been reviewed in the source data. Import still creates a new draft with no authority.`));
+  }
   importPanel.append(helper("Nothing runs and no permission is granted by this file. Importing creates a brand-new draft that you must review and approve separately."));
 
   const row = document.createElement("div");

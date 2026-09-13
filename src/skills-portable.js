@@ -74,6 +74,8 @@ export function previewPortableSkill(skill) {
     providerCapabilities: structuredClone(normalized.providerRequirements?.capabilities || []),
     inputCount: Object.keys(normalized.inputs || {}).length,
     stepCount: normalized.steps.length,
+    unresolvedStepCount: normalized.steps.filter((step) => step?.review?.unresolved === true).length,
+    fragileStepCount: normalized.steps.filter((step) => step?.review?.stability === "fragile").length,
     budgets: structuredClone(normalized.budgets),
     compatibility: structuredClone(normalized.compatibility)
   };
@@ -136,6 +138,7 @@ function projectStep(step) {
   if (isPlainObject(step.target)) projected.target = pick(step.target, ["role", "label", "ariaLabel", "name", "id", "testId", "type", "autocomplete", "placeholder"]);
   if (isPlainObject(step.expect)) projected.expect = pick(step.expect, ["visibleText", "urlIncludes", "role", "label", "state"]);
   if (isPlainObject(step.download)) projected.download = pick(step.download, ["userInitiated", "expectedUrlOrigin"]);
+  if (isPlainObject(step.review)) projected.review = pick(step.review, ["stability", "unresolved", "reason"]);
   return projected;
 }
 

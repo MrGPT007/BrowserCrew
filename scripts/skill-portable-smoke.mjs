@@ -33,8 +33,8 @@ const sourceSkill = {
   providerRequirements: { capabilities: ["text_generation"] },
   budgets: { maxSteps: 12, maxMinutes: 9 },
   steps: [
-    { id: "step-search", kind: "type", purpose: "Enter the reviewed search term.", origin: "https://example.test", target: { role: "textbox", label: "Search" }, value: "{{input.searchTerm}}" },
-    { id: "step-verify", kind: "verify", purpose: "Verify the reviewed result.", origin: "https://example.test", expect: { visibleText: "Ready" } }
+    { id: "step-search", kind: "type", purpose: "Enter the reviewed search term.", origin: "https://example.test", target: { role: "textbox", label: "Search" }, value: "{{input.searchTerm}}", review: { stability: "stable", unresolved: false } },
+    { id: "step-verify", kind: "verify", purpose: "Verify the reviewed result.", origin: "https://example.test", expect: { visibleText: "Ready" }, review: { stability: "stable", unresolved: false } }
   ],
   completionCriteria: [{ claim: "The supplier result is ready.", verification: "Visible text says Ready." }],
   verificationRules: { reobserveTargetsBeforeDispatch: true, requireFinalVerification: true },
@@ -90,7 +90,10 @@ try {
   assert.equal(parsed.canonicalText, exportedText, "Export -> parse -> export must stay byte-stable.");
   assert.deepEqual(parsed.preview.allowedResources, sourceSkill.allowedResources);
   assert.deepEqual(parsed.preview.providerCapabilities, sourceSkill.providerRequirements.capabilities);
-  pass("Approved exact version exports as deterministic versioned JSON without changing authority");
+  assert.equal(parsed.preview.unresolvedStepCount, 0);
+  assert.equal(parsed.preview.fragileStepCount, 0);
+  assert.deepEqual(parsed.sourceSkill.steps[0].review, { stability: "stable", unresolved: false });
+  pass("Approved exact version exports deterministic target-review metadata without changing authority");
 
   const libraryAfterExport = await storedSkills(worker);
   assert.equal(libraryAfterExport.length, 1);
@@ -132,7 +135,7 @@ try {
   assert.deepEqual(imported.providerRequirements, sourceSkill.providerRequirements);
   assert.deepEqual(imported.dataDestinations, sourceSkill.dataDestinations);
   assert.deepEqual(imported.budgets, sourceSkill.budgets);
-  assert.deepEqual(imported.steps, sourceSkill.steps);
+  assert.deepEqual(imported.steps, sourceSkill.steps, "Import must preserve target-review metadata exactly.");
   assert.deepEqual(imported.provenance.sourceSkillRef, { id: sourceSkill.id, version: sourceSkill.version });
   assert.equal(imported.createdAt, imported.provenance.createdAt);
   assert.ok(Date.parse(imported.updatedAt) >= Date.parse(imported.createdAt));
@@ -140,7 +143,30 @@ try {
   await waitUntil(async () => /Imported as a new draft/i.test(await panel.locator("#toast").innerText()), "Import should explain that the new version remains a draft.");
   const permissionsAfterImport = await grantedPermissions(worker);
   assert.deepEqual(permissionsAfterImport, permissionsBefore, "Skill import must not grant Chrome permissions.");
-  pass("Confirmed import creates a new unapproved 0.1.0 draft, preserves bounded declarative scope and metadata, and grants nothing");
+  pass("Confirmed import creates a new unapproved 0.1.0 draft, preserves bounded declarative scope, metadata, and reviewed target state, and grants nothing");
+
+  const fragile = JSON.parse(exportedText);
+  fragile.skill.status = "draft";
+  delete fragile.skill.approval;
+  fragile.skill.steps[0].target = { role: "textbox" };
+  fragile.skill.steps[0].review = {
+    stability: "fragile",
+    unresolved: true,
+    reason: "This recorded target has a weak semantic fingerprint. Review or remove this step before approving the skill."
+  };
+  await panel.locator("#skillImportFile").setInputFiles({
+    name: "fragile.browsercrew-skill.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(fragile))
+  });
+  const fragilePreview = panel.locator("#skillImportPreview");
+  await fragilePreview.waitFor({ state: "visible", timeout: timeoutMs });
+  assert.match(await fragilePreview.innerText(), /1 recorded target still needs review/i);
+  assert.match(await fragilePreview.innerText(), /Fragile-step review state is preserved by import/i);
+  assert.equal((await storedSkills(worker)).length, 2, "Reviewing unresolved import metadata must not persist the file.");
+  await fragilePreview.getByRole("button", { name: "Cancel import" }).click();
+  await waitUntil(async () => await panel.locator("#skillImportPreview").count() === 0, "Cancelling unresolved import preview should remove the preview.");
+  pass("Portable import visibly preserves unresolved fragile-target state instead of silently trusting it");
 
   const hostile = JSON.parse(exportedText);
   hostile.skill.remoteCode = "https://evil.test/payload.js";

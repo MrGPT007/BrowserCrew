@@ -3,10 +3,15 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { reviewSkillDraft } from "../src/skills-draft-review.js";
-import { validateSkill } from "../src/skills-contract.js";
+import { promoteSkillDraft, validateSkill } from "../src/skills-contract.js";
+import { draftSkillFromWatchSession } from "../src/watch-me-contract.js";
+import { inferRecordedStepReview, unresolvedSkillStepReviews } from "../src/skills-step-review.js";
 
 const execFileAsync = promisify(execFile);
 for (const file of [
+  "src/skills-step-review.js",
+  "src/skills-contract.js",
+  "src/watch-me-contract.js",
   "src/skills-draft-review.js",
   "src/skills-draft-review-ui.js",
   "scripts/skills-draft-review-check.mjs",
@@ -107,6 +112,50 @@ assert.deepEqual(readOnly.actionClasses, ["read"], "After page-change steps are 
 assert.deepEqual(readOnly.inputs, {}, "Removing all input-consuming steps must prune their runtime inputs.");
 assert.equal(readOnly.steps.at(-1).kind, "verify");
 
+assert.deepEqual(inferRecordedStepReview({ kind: "click", target: { role: "button", label: "Preview" } }), { stability: "stable", unresolved: false });
+const weakReview = inferRecordedStepReview({ kind: "click", target: { role: "button" } });
+assert.equal(weakReview.stability, "fragile");
+assert.equal(weakReview.unresolved, true);
+assert.match(weakReview.reason, /weak semantic fingerprint/i);
+
+const stoppedWatchSession = {
+  schemaVersion: 1,
+  id: "watch-fragile-static",
+  status: "stopped",
+  approvedTabs: [11],
+  approvedOrigins: [origin],
+  startedAt: "2026-09-12T12:00:00.000Z",
+  stoppedAt: "2026-09-12T12:01:00.000Z",
+  events: [
+    { id: "weak-click", kind: "click", tabId: 11, origin, target: { role: "button" } },
+    { id: "final-check", kind: "verify", tabId: 11, origin, expect: { visibleText: "Ready" } }
+  ],
+  variables: {},
+  warnings: []
+};
+const watchDraft = draftSkillFromWatchSession(stoppedWatchSession, {
+  skillId: "watch-fragile-static",
+  title: "Fragile recorded target",
+  description: "Review the weak recorded target before approval."
+});
+assert.equal(watchDraft.steps[0].review.stability, "fragile");
+assert.equal(watchDraft.steps[0].review.unresolved, true);
+assert.deepEqual(watchDraft.steps[1].review, { stability: "stable", unresolved: false });
+assert.equal(unresolvedSkillStepReviews(watchDraft).length, 1);
+assert.equal(validateSkill(watchDraft).ok, true, "Unresolved metadata must remain valid draft data.");
+assert.throws(() => promoteSkillDraft(watchDraft, { approvedAt: "2026-09-12T12:02:00.000Z" }), (error) => error?.code === "SKILL_STEP_REVIEW_REQUIRED");
+
+const resolvedWatchDraft = reviewSkillDraft(watchDraft, {
+  stepEdits: { "weak-click": { confirmTarget: true } }
+});
+assert.equal(resolvedWatchDraft.steps[0].review.stability, "fragile", "Review must preserve the fragility signal instead of pretending the target became stronger.");
+assert.equal(resolvedWatchDraft.steps[0].review.unresolved, false);
+assert.deepEqual(resolvedWatchDraft.steps[0].target, watchDraft.steps[0].target, "Target review must never rewrite the semantic target.");
+const approvedResolved = promoteSkillDraft(resolvedWatchDraft, { approvedAt: "2026-09-12T12:03:00.000Z" });
+assert.equal(approvedResolved.status, "approved");
+assert.equal(approvedResolved.steps[0].review.unresolved, false);
+assert.throws(() => reviewSkillDraft(draft, { stepEdits: { "step-preview": { confirmTarget: true } } }), /does not have an unresolved recorded target/);
+
 assert.throws(() => reviewSkillDraft(widerRecordedDraft, {
   scopeEdits: { allowedOrigins: [origin, "https://new.example.test"], actionClasses: widerRecordedDraft.actionClasses }
 }), /cannot add a new website/);
@@ -137,6 +186,9 @@ for (const phrase of [
   "This screen cannot add websites, actions, permissions, budgets, or runtime values.",
   "You can only make this draft narrower",
   "Keep only the access this draft still needs",
+  "A fragile target stays blocked from approval",
+  "I reviewed this fragile recorded target and want to keep this step",
+  "confirmFragileStep",
   "scopeOrigin",
   "scopeAction",
   "The final result check cannot be removed.",
@@ -157,10 +209,25 @@ for (const phrase of [
   "narrowStringScope",
   "assertKeptStepsFitScope",
   "scopeEdits",
+  "confirmTarget",
+  "does not have an unresolved recorded target",
   "Draft review cannot add a new",
   "validateSkill(next)",
   "The final result check cannot be removed."
 ]) if (!helperSource.includes(phrase)) throw new Error(`Skill draft review helper contract missing: ${phrase}`);
+
+const contractSource = await readFile("src/skills-contract.js", "utf8");
+for (const phrase of [
+  'import { validateStepReviewMetadata } from "./skills-step-review.js"',
+  "SKILL_STEP_REVIEW_REQUIRED",
+  "Approved skill versions cannot contain unresolved recorded steps"
+]) if (!contractSource.includes(phrase)) throw new Error(`Skill unresolved-step execution boundary missing: ${phrase}`);
+
+const watchSource = await readFile("src/watch-me-contract.js", "utf8");
+for (const phrase of [
+  'import { inferRecordedStepReview } from "./skills-step-review.js"',
+  "step.review = inferRecordedStepReview(step)"
+]) if (!watchSource.includes(phrase)) throw new Error(`Watch Me unresolved-step capture contract missing: ${phrase}`);
 
 const sidepanelSource = await readFile("src/sidepanel.js", "utf8");
 if (!sidepanelSource.includes('import "./skills-draft-review-ui.js"')) throw new Error("Side panel must load the skill draft review UI.");
@@ -179,5 +246,10 @@ const pkg = JSON.parse(await readFile("package.json", "utf8"));
 if (pkg.scripts?.["skills-draft-review-check"] !== "node scripts/skills-draft-review-check.mjs") throw new Error("skills-draft-review-check script must stay wired.");
 if (pkg.scripts?.["skill-draft-review-smoke"] !== "node scripts/skill-draft-review-smoke.mjs") throw new Error("skill-draft-review-smoke must stay wired.");
 if (!String(pkg.scripts?.check || "").includes("skills-draft-review-check.mjs")) throw new Error("npm run check must include skill draft review contracts.");
+
+const manifest = JSON.parse(await readFile("manifest.json", "utf8"));
+if ((manifest.permissions || []).includes("alarms")) throw new Error("Fragile-step review must not widen the v0.2 manifest with alarms.");
+const serviceWorker = await readFile("src/service-worker.js", "utf8");
+if (serviceWorker.includes("bootSchedulesRuntime")) throw new Error("Fragile-step review must not activate production scheduling.");
 
 console.log("BrowserCrew skill draft review contracts passed.");

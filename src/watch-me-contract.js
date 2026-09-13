@@ -1,4 +1,5 @@
 import { validateSkill } from "./skills-contract.js";
+import { inferRecordedStepReview } from "./skills-step-review.js";
 
 export const WATCH_ME_SCHEMA_VERSION = 1;
 export const WATCH_ME_EVENT_KINDS = Object.freeze(["navigate", "click", "type", "select", "waitFor", "verify", "download"]);
@@ -88,6 +89,7 @@ export function draftSkillFromWatchSession(session, { skillId, version = "0.1.0"
     if (event.url) step.url = event.url;
     if (event.expect) step.expect = event.expect;
     if (event.download) step.download = event.download;
+    step.review = inferRecordedStepReview(step);
     return step;
   });
 

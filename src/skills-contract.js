@@ -1,4 +1,5 @@
 import { SKILL_CONTRACT_METADATA_VERSION, hasCompleteSkillContractMetadata } from "./skills-contract-metadata.js";
+import { validateStepReviewMetadata } from "./skills-step-review.js";
 
 export const SKILL_SCHEMA_VERSION = 1;
 export const SKILL_STATUSES = Object.freeze(["draft", "approved", "archived"]);
@@ -68,6 +69,9 @@ export function validateSkill(skill, { requireApproved = false, requireMetadata 
   else {
     const seen = new Set();
     skill.steps.forEach((step, index) => validateStep(step, index, inputs, seen, errors));
+    if (requireApproved && skill.steps.some((step) => step?.review?.unresolved === true)) {
+      errors.push("Approved skill versions cannot contain unresolved recorded steps. Review or remove every fragile step first.");
+    }
   }
 
   if (!Array.isArray(skill.completionCriteria) || !skill.completionCriteria.length) errors.push("completionCriteria must contain at least one verification criterion.");
@@ -97,7 +101,11 @@ export function validateSkill(skill, { requireApproved = false, requireMetadata 
 
 export function assertSkillExecutable(skill) {
   const result = validateSkill(skill, { requireApproved: true });
-  if (!result.ok) throw new Error(`Skill is not executable: ${result.errors.join(" ")}`);
+  if (!result.ok) {
+    const error = new Error(`Skill is not executable: ${result.errors.join(" ")}`);
+    if (result.errors.some((item) => item.startsWith("Approved skill versions cannot contain unresolved recorded steps."))) error.code = "SKILL_STEP_REVIEW_REQUIRED";
+    throw error;
+  }
   return true;
 }
 
@@ -118,11 +126,13 @@ export function promoteSkillDraft(skill, { approvedAt, approvedBy = "user" } = {
   if (!check.ok) throw new Error(`Cannot approve invalid skill: ${check.errors.join(" ")}`);
   if (skill.status !== "draft") throw new Error("Only a draft skill can be approved.");
   if (!approvedAt) throw new Error("approvedAt is required.");
-  return {
+  const approved = {
     ...structuredClone(skill),
     status: "approved",
     approval: { approvedAt, approvedBy }
   };
+  assertSkillExecutable(approved);
+  return approved;
 }
 
 function validateInput(name, input, errors) {
@@ -155,6 +165,7 @@ function validateStep(step, index, inputs, seen, errors) {
   if (step.kind === "type" && step.value === undefined) errors.push(`${label}.value is required for type.`);
   if (["waitFor", "verify"].includes(step.kind) && !isPlainObject(step.expect)) errors.push(`${label}.expect is required for ${step.kind}.`);
   if (step.kind === "waitFor" && step.timeoutMs !== undefined && !positiveInteger(step.timeoutMs, 100, 30_000)) errors.push(`${label}.timeoutMs must be an integer from 100 to 30000.`);
+  if (step.review !== undefined) errors.push(...validateStepReviewMetadata(step.review, `${label}.review`));
   validateInputReferences(step, inputs, label, errors);
 }
 
