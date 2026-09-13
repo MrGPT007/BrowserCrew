@@ -331,7 +331,11 @@ export async function reviewMissedScheduleRun(runId, decision) {
   const receipt = claim.receipt;
   const schedule = claim.schedule;
   const acceptedSchedule = schedule.recurrence.kind === "once" ? { ...schedule, enabled: true } : schedule;
-  await dispatchReceipt(acceptedSchedule, receipt);
+  try {
+    await dispatchReceipt(acceptedSchedule, receipt);
+  } finally {
+    await drainQueuedRun(receipt.scheduleId);
+  }
   return { ok: receipt.status === "completed", run: receipt, error: receipt.status === "completed" ? undefined : { code: receipt.reason || "TASK_FAILED", message: "The missed scheduled job did not complete." } };
 }
 
@@ -482,34 +486,53 @@ async function dispatchReceipt(schedule, receipt) {
 }
 
 async function drainQueuedRun(scheduleId) {
-  const runs = await listScheduleRuns(scheduleId);
-  const queued = runs
-    .filter((run) => run.status === "queued")
-    .sort((a, b) => Date.parse(a.queuedAt || a.firedAt) - Date.parse(b.queuedAt || b.firedAt));
-  if (!queued.length) return;
+  const claim = await withScheduleRunHistoryMutation(async () => {
+    const data = await chrome.storage.local.get([SCHEDULE_RUNS_KEY, SCHEDULES_KEY]);
+    const runs = Array.isArray(data[SCHEDULE_RUNS_KEY]) ? data[SCHEDULE_RUNS_KEY] : [];
+    const schedules = Array.isArray(data[SCHEDULES_KEY]) ? data[SCHEDULES_KEY] : [];
+    const scheduleRuns = runs.filter((run) => run.scheduleId === scheduleId);
+    const queued = scheduleRuns
+      .filter((run) => run.status === "queued")
+      .sort((a, b) => Date.parse(a.queuedAt || a.firedAt) - Date.parse(b.queuedAt || b.firedAt));
+    if (!queued.length) return null;
 
-  const stillActive = runs.some((run) => ["checking", "running"].includes(run.status));
-  if (stillActive) return;
+    const stillActive = scheduleRuns.some((run) => ["checking", "running"].includes(run.status));
+    if (stillActive) return null;
 
-  const schedules = await listSchedules();
-  const schedule = schedules.find((item) => item.id === scheduleId);
-  const receipt = queued[0];
-  if (!schedule) {
-    await settleWithoutDispatch(receipt, "blocked", "SCHEDULE_NOT_FOUND");
-    return;
-  }
-  if (!schedule.enabled && schedule.recurrence.kind !== "once") {
-    await settleWithoutDispatch(receipt, "blocked", "SCHEDULE_PAUSED");
-    return;
-  }
+    const receipt = structuredClone(queued[0]);
+    const index = runs.findIndex((run) => run.id === receipt.id);
+    if (index < 0) return null;
+    const schedule = schedules.find((item) => item.id === scheduleId);
+    const persistClaim = async () => {
+      runs[index] = structuredClone(receipt);
+      await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.slice(0, MAX_RUN_RECEIPTS) });
+    };
 
-  receipt.status = "checking";
-  receipt.reason = null;
-  receipt.dequeuedAt = new Date().toISOString();
-  await updateRunReceipt(receipt);
+    if (!schedule) {
+      receipt.status = "blocked";
+      receipt.reason = "SCHEDULE_NOT_FOUND";
+      receipt.completedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "done" };
+    }
+    if (!schedule.enabled && schedule.recurrence.kind !== "once") {
+      receipt.status = "blocked";
+      receipt.reason = "SCHEDULE_PAUSED";
+      receipt.completedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "done" };
+    }
 
-  const acceptedSchedule = schedule.recurrence.kind === "once" ? { ...schedule, enabled: true } : schedule;
-  await dispatchReceipt(acceptedSchedule, receipt);
+    receipt.status = "checking";
+    receipt.reason = null;
+    receipt.dequeuedAt = new Date().toISOString();
+    await persistClaim();
+    return { action: "dispatch", receipt, schedule: structuredClone(schedule) };
+  });
+
+  if (!claim || claim.action === "done") return;
+  const acceptedSchedule = claim.schedule.recurrence.kind === "once" ? { ...claim.schedule, enabled: true } : claim.schedule;
+  await dispatchReceipt(acceptedSchedule, claim.receipt);
   await drainQueuedRun(scheduleId);
 }
 
