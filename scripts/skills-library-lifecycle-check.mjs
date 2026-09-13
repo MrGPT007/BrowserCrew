@@ -61,7 +61,6 @@ assert.throws(() => duplicateSkillAsDraft({ ...source, id: "INVALID ID" }, { id:
 
 const ui = await readFile("src/skills-library-lifecycle-ui.js", "utf8");
 for (const phrase of [
-  "What is a Skill? A saved way to do a browser job.",
   "All versions",
   "Drafts",
   "Approved",

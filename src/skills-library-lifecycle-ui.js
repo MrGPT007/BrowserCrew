@@ -12,8 +12,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const heading = card.querySelector("h2");
   if (heading) heading.textContent = "My Skills";
-  const helper = card.querySelector(".helper");
-  if (helper) helper.textContent = "What is a Skill? A saved way to do a browser job. A recorded job starts as a draft. Review the steps and requested sites before you approve it. Approval never grants new site or write permissions.";
   const filters = createFilters();
   list.before(filters);
   filters.addEventListener("click", onFilterAction);

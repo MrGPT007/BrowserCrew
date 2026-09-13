@@ -67,7 +67,7 @@ try {
   await panel.locator("#skillLibraryFilters").waitFor({ state: "visible", timeout: timeoutMs });
   await waitUntil(async () => await panel.locator("[data-skill-record]").count() === 3, "My Skills should render all exact versions.");
   assert.equal(await panel.locator("#versionedSkillsCard h2").innerText(), "My Skills");
-  assert.match(await panel.locator("#versionedSkillsCard .helper").innerText(), /What is a Skill\? A saved way to do a browser job\./);
+  assert.match(await panel.locator("#skillLibraryPlainHelp").innerText(), /A Skill is a saved way to do a browser job\./);
   assert.match(await panel.getByRole("button", { name: /^All versions/ }).innerText(), /\(3\)/);
   assert.match(await panel.getByRole("button", { name: /^Drafts/ }).innerText(), /\(1\)/);
   assert.match(await panel.getByRole("button", { name: /^Approved/ }).innerText(), /\(1\)/);
