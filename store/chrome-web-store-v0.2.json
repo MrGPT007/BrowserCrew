@@ -31,7 +31,7 @@
     },
     {
       "name": "scripting",
-      "justification": "Reads bounded visible-page observations and performs explicitly approved page actions required by the selected browser task.",
+      "justification": "Reads bounded visible page observations and performs explicitly approved page actions required by the selected browser task.",
       "boundary": "Execution is limited by the selected-resource identity, site permission, workflow policy, stale-state checks, and approval checks."
     },
     {
@@ -137,9 +137,9 @@
     "statement": "BrowserCrew does not download or execute remote JavaScript or WebAssembly. AI and MCP responses are treated as data and remain behind BrowserCrew's local policy/tool boundaries."
   },
   "requiredStoreAssets": [
-    { "id": "icon_128_png", "required": true, "status": "missing", "spec": "128x128 PNG in the extension ZIP" },
+    { "id": "icon_128_png", "required": true, "status": "ready", "path": "src/assets/icons/browsercrew-128.png", "sha256": "8bcec8327cb641996bddf9a0f5817c7e5014c3dd272ab74a25d40491d9023eb7", "spec": "128x128 PNG in the extension ZIP" },
     { "id": "screenshot_1280x800", "required": true, "status": "generated_by_ci", "path": "artifacts/store-media/browsercrew-workspace-1280x800.png", "spec": "At least one 1280x800 or 640x400 product screenshot; BrowserCrew generates a real installed-extension 1280x800 Workspace screenshot" },
-    { "id": "small_promo_440x280", "required": true, "status": "missing", "spec": "440x280 PNG or JPEG" },
+    { "id": "small_promo_440x280", "required": true, "status": "generated_by_ci", "path": "artifacts/store-media/browsercrew-small-promo-440x280.png", "spec": "440x280 PNG rendered from the reviewed BrowserCrew brand lockup and NeoBrutal Soft palette" },
     { "id": "youtube_video", "required": false, "status": "optional", "spec": "Optional/marketing video URL unless Dashboard requires it for the chosen listing flow" },
     { "id": "marquee_1400x560", "required": false, "status": "optional", "spec": "1400x560 PNG or JPEG" }
   ],

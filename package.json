@@ -44,7 +44,7 @@
     "workspace-stop-smoke": "node scripts/workspace-stop-smoke.mjs",
     "w1-w3-adversarial-smoke": "node scripts/w1-w3-adversarial-smoke.mjs",
     "w2-w4-w5-adversarial-smoke": "node scripts/w2-w4-w5-adversarial-smoke.mjs",
-    "store-media-smoke": "node scripts/store-media-smoke.mjs",
+    "store-media-smoke": "node scripts/store-media-smoke.mjs && node scripts/store-assets-smoke.mjs",
     "previous-stable-smoke": "node scripts/previous-stable-runner.mjs",
     "release-matrix-smoke": "node scripts/release-matrix-smoke.mjs",
     "provider-certify": "node scripts/provider-certify.mjs",
