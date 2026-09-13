@@ -104,6 +104,10 @@ async function settleTurn() {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
+function isScheduleRunHistoryRead(keys) {
+  return keys === SCHEDULE_RUNS_KEY || (Array.isArray(keys) && keys.length === 1 && keys[0] === SCHEDULE_RUNS_KEY);
+}
+
 globalThis.chrome = {
   runtime: {
     onConnect: eventBucket("connect"),
@@ -113,7 +117,7 @@ globalThis.chrome = {
   storage: {
     local: {
       async get(keys) {
-        if (keys === SCHEDULE_RUNS_KEY && holdFirstRunWrite) scheduleRunGetCount += 1;
+        if (isScheduleRunHistoryRead(keys) && holdFirstRunWrite) scheduleRunGetCount += 1;
         if (keys === SCHEDULES_KEY && trackScheduleState) scheduleGetCount += 1;
         if (keys == null) return Object.fromEntries([...storage.entries()].map(([key, value]) => [key, clone(value)]));
         const wanted = Array.isArray(keys) ? keys : typeof keys === "string" ? [keys] : Object.keys(keys);
@@ -168,14 +172,14 @@ const firedAt = Date.now();
 holdFirstRunWrite = true;
 const firstDelivery = alarmListener({ name: "browsercrew.schedule.history-a", scheduledTime: firedAt });
 await firstRunSetEntered;
-assert.equal(scheduleRunGetCount, 2, "The first run must perform duplicate lookup and then its receipt mutation read before the held write.");
+assert.equal(scheduleRunGetCount, 1, "The first run must perform one atomic occurrence claim read before the held history write.");
 
 const secondDelivery = alarmListener({ name: "browsercrew.schedule.history-b", scheduledTime: firedAt + 1 });
 await new Promise((resolve) => setImmediate(resolve));
 assert.equal(
   scheduleRunGetCount,
-  3,
-  "A distinct concurrent schedule may perform its duplicate lookup, but its receipt mutation read must wait for the first shared-history mutation to commit."
+  1,
+  "A distinct concurrent schedule must wait behind the first shared-history occurrence claim before reading durable run history."
 );
 
 holdFirstRunWrite = false;
