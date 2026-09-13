@@ -254,7 +254,7 @@ const fs = await import("node:fs/promises");
 const runtimeSource = await fs.readFile(new URL("../src/schedules-runtime.js", import.meta.url), "utf8");
 for (const phrase of [
   "const scheduledFor = new Date(scheduledTime).toISOString()",
-  "run.scheduledFor === scheduledFor",
+  "run.scheduledFor === receipt.scheduledFor",
   "if (duplicate) return",
   "next.lastRunAt = current ? current.lastRunAt ?? null : null",
   "assertScheduleTargetUnchanged(current, existingSnapshot)",
