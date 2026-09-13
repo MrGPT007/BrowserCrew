@@ -253,52 +253,83 @@ export async function reviewMissedScheduleRun(runId, decision) {
   if (!runId) throw coded("SCHEDULE_RUN_ID_REQUIRED", "Choose the missed scheduled job you want to review.");
   if (!["run_once", "skip"].includes(decision)) throw coded("SCHEDULE_REVIEW_DECISION_INVALID", "Choose whether to run this missed job once or skip it.");
 
-  const runs = await listScheduleRuns();
-  const receipt = runs.find((run) => run.id === runId);
-  if (!receipt) throw coded("SCHEDULE_RUN_NOT_FOUND", "That scheduled job receipt could not be found.");
-  if (receipt.status !== "needs_review") throw coded("SCHEDULE_REVIEW_NOT_PENDING", "That scheduled job is no longer waiting for review.");
+  const claim = await withScheduleRunHistoryMutation(async () => {
+    const data = await chrome.storage.local.get([SCHEDULE_RUNS_KEY, SCHEDULES_KEY]);
+    const runs = Array.isArray(data[SCHEDULE_RUNS_KEY]) ? data[SCHEDULE_RUNS_KEY] : [];
+    const schedules = Array.isArray(data[SCHEDULES_KEY]) ? data[SCHEDULES_KEY] : [];
+    const index = runs.findIndex((run) => run.id === runId);
+    if (index < 0) throw coded("SCHEDULE_RUN_NOT_FOUND", "That scheduled job receipt could not be found.");
 
-  receipt.reviewDecision = decision;
-  receipt.reviewedAt = new Date().toISOString();
+    const receipt = structuredClone(runs[index]);
+    if (receipt.status !== "needs_review") throw coded("SCHEDULE_REVIEW_NOT_PENDING", "That scheduled job is no longer waiting for review.");
 
-  if (decision === "skip") {
-    await settleWithoutDispatch(receipt, "skipped", "SCHEDULE_MISSED_USER_SKIPPED");
-    return { ok: true, run: receipt };
+    receipt.reviewDecision = decision;
+    receipt.reviewedAt = new Date().toISOString();
+    const persistClaim = async () => {
+      runs[index] = structuredClone(receipt);
+      await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.slice(0, MAX_RUN_RECEIPTS) });
+    };
+
+    if (decision === "skip") {
+      receipt.status = "skipped";
+      receipt.reason = "SCHEDULE_MISSED_USER_SKIPPED";
+      receipt.completedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "done", ok: true, receipt };
+    }
+
+    if (typeof dispatchScheduledRun !== "function") {
+      receipt.status = "needs_review";
+      receipt.reason = "SCHEDULE_DISPATCH_REQUIRED";
+      await persistClaim();
+      return { action: "dispatch_required", receipt };
+    }
+
+    const schedule = schedules.find((item) => item.id === receipt.scheduleId);
+    if (!schedule) {
+      receipt.status = "blocked";
+      receipt.reason = "SCHEDULE_NOT_FOUND";
+      receipt.completedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "done", ok: false, receipt, message: "The schedule for this missed job no longer exists." };
+    }
+
+    const activeRun = runs.some((run) => run.id !== receipt.id && run.scheduleId === receipt.scheduleId && ["checking", "running"].includes(run.status));
+    const queuedRun = runs.some((run) => run.id !== receipt.id && run.scheduleId === receipt.scheduleId && run.status === "queued");
+    const concurrency = decideScheduleConcurrency(schedule, { activeRun, queuedRun });
+    if (concurrency.action === "skip") {
+      receipt.status = "skipped";
+      receipt.reason = concurrency.reason;
+      receipt.completedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "done", ok: false, receipt, message: "This missed job could not start because another run is already using its schedule slot." };
+    }
+    if (concurrency.action === "queue") {
+      receipt.status = "queued";
+      receipt.reason = concurrency.reason;
+      receipt.queuedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "queued", receipt };
+    }
+
+    receipt.status = "checking";
+    receipt.reason = null;
+    await persistClaim();
+    return { action: "dispatch", receipt, schedule: structuredClone(schedule) };
+  });
+
+  if (claim.action === "dispatch_required") {
+    throw withRun(coded("SCHEDULE_DISPATCH_REQUIRED", "Scheduled jobs are not enabled in this BrowserCrew build yet."), claim.receipt);
+  }
+  if (claim.action === "queued") return { ok: true, run: claim.receipt, queued: true };
+  if (claim.action === "done") {
+    return claim.ok
+      ? { ok: true, run: claim.receipt }
+      : { ok: false, run: claim.receipt, error: { code: claim.receipt.reason, message: claim.message } };
   }
 
-  if (typeof dispatchScheduledRun !== "function") {
-    receipt.status = "needs_review";
-    receipt.reason = "SCHEDULE_DISPATCH_REQUIRED";
-    await updateRunReceipt(receipt);
-    throw withRun(coded("SCHEDULE_DISPATCH_REQUIRED", "Scheduled jobs are not enabled in this BrowserCrew build yet."), receipt);
-  }
-
-  const schedules = await listSchedules();
-  const schedule = schedules.find((item) => item.id === receipt.scheduleId);
-  if (!schedule) {
-    await settleWithoutDispatch(receipt, "blocked", "SCHEDULE_NOT_FOUND");
-    return { ok: false, run: receipt, error: { code: receipt.reason, message: "The schedule for this missed job no longer exists." } };
-  }
-
-  const activeRun = runs.some((run) => run.id !== receipt.id && run.scheduleId === receipt.scheduleId && ["checking", "running"].includes(run.status));
-  const queuedRun = runs.some((run) => run.id !== receipt.id && run.scheduleId === receipt.scheduleId && run.status === "queued");
-  const concurrency = decideScheduleConcurrency(schedule, { activeRun, queuedRun });
-  if (concurrency.action === "skip") {
-    await settleWithoutDispatch(receipt, "skipped", concurrency.reason);
-    return { ok: false, run: receipt, error: { code: receipt.reason, message: "This missed job could not start because another run is already using its schedule slot." } };
-  }
-  if (concurrency.action === "queue") {
-    receipt.status = "queued";
-    receipt.reason = concurrency.reason;
-    receipt.queuedAt = new Date().toISOString();
-    await updateRunReceipt(receipt);
-    return { ok: true, run: receipt, queued: true };
-  }
-
-  receipt.status = "checking";
-  receipt.reason = null;
-  await updateRunReceipt(receipt);
-
+  const receipt = claim.receipt;
+  const schedule = claim.schedule;
   const acceptedSchedule = schedule.recurrence.kind === "once" ? { ...schedule, enabled: true } : schedule;
   await dispatchReceipt(acceptedSchedule, receipt);
   return { ok: receipt.status === "completed", run: receipt, error: receipt.status === "completed" ? undefined : { code: receipt.reason || "TASK_FAILED", message: "The missed scheduled job did not complete." } };
