@@ -2,7 +2,7 @@ import { validateSkill } from "./skills-contract.js";
 
 const INPUT_NAME_PATTERN = /^[a-z][a-zA-Z0-9_]{0,63}$/;
 
-export function reviewSkillDraft(skill, { title, description, inputEdits = {}, stepEdits = {} } = {}) {
+export function reviewSkillDraft(skill, { title, description, inputEdits = {}, stepEdits = {}, scopeEdits = {} } = {}) {
   const original = structuredClone(skill || {});
   const initial = validateSkill(original);
   if (!initial.ok) throw new Error(`Cannot edit invalid skill draft: ${initial.errors.join(" ")}`);
@@ -51,6 +51,18 @@ export function reviewSkillDraft(skill, { title, description, inputEdits = {}, s
     throw new Error("The draft must keep its final visible result check.");
   }
 
+  const hasOriginEdit = Object.prototype.hasOwnProperty.call(scopeEdits || {}, "allowedOrigins");
+  const hasActionEdit = Object.prototype.hasOwnProperty.call(scopeEdits || {}, "actionClasses");
+  if (hasOriginEdit || hasActionEdit) {
+    next.allowedOrigins = hasOriginEdit
+      ? narrowStringScope(original.allowedOrigins, scopeEdits.allowedOrigins, "website")
+      : structuredClone(original.allowedOrigins);
+    next.actionClasses = hasActionEdit
+      ? narrowStringScope(original.actionClasses, scopeEdits.actionClasses, "action")
+      : structuredClone(original.actionClasses);
+    assertKeptStepsFitScope(reviewedSteps, next.allowedOrigins, next.actionClasses);
+  }
+
   const usedInputs = collectInputRefs(reviewedSteps);
   next.inputs = Object.fromEntries(Object.entries(renamedInputs).filter(([name]) => usedInputs.has(name)));
   next.steps = reviewedSteps;
@@ -58,6 +70,34 @@ export function reviewSkillDraft(skill, { title, description, inputEdits = {}, s
   const result = validateSkill(next);
   if (!result.ok) throw new Error(`Edited skill draft is invalid: ${result.errors.join(" ")}`);
   return next;
+}
+
+function narrowStringScope(originalValues, requestedValues, label) {
+  if (!Array.isArray(requestedValues)) throw new Error(`Choose the ${label} scope from the values already recorded in this draft.`);
+  const original = new Set(originalValues || []);
+  const requested = [...new Set(requestedValues.map((value) => String(value || "").trim()).filter(Boolean))];
+  for (const value of requested) {
+    if (!original.has(value)) throw new Error(`Draft review cannot add a new ${label}: ${value}.`);
+  }
+  if (!requested.length) throw new Error(`Keep at least one ${label} in this draft.`);
+  return requested;
+}
+
+function assertKeptStepsFitScope(steps, allowedOrigins, actionClasses) {
+  const origins = new Set(allowedOrigins || []);
+  for (const step of steps) {
+    if (typeof step.origin === "string" && /^https?:\/\//.test(step.origin) && !origins.has(step.origin)) {
+      throw new Error(`A kept step still uses ${step.origin}. Keep that website or remove every step that uses it first.`);
+    }
+  }
+
+  const actions = new Set(actionClasses || []);
+  const required = new Set(["read"]);
+  if (steps.some((step) => ["click", "type", "select"].includes(step.kind))) required.add("page_write_prepare");
+  if (steps.some((step) => step.kind === "download")) required.add("download");
+  for (const action of required) {
+    if (!actions.has(action)) throw new Error(`Kept steps still need the “${action}” action. Keep that action or remove those steps first.`);
+  }
 }
 
 function rewriteInputRefs(value, renameMap) {

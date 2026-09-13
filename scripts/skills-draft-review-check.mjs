@@ -65,8 +65,8 @@ assert.equal(reviewed.steps.find((step) => step.id === "step-email")?.value, "{{
 assert.equal(reviewed.steps.find((step) => step.id === "step-email")?.purpose, "Enter the recipient email only at run time.");
 assert.equal(reviewed.steps.some((step) => step.id === "step-preview"), false);
 assert.equal(reviewed.steps.at(-1).id, "step-verify");
-assert.deepEqual(reviewed.allowedOrigins, draft.allowedOrigins, "Draft review must not widen or rewrite site scope.");
-assert.deepEqual(reviewed.actionClasses, draft.actionClasses, "Draft review must not widen or rewrite action scope.");
+assert.deepEqual(reviewed.allowedOrigins, draft.allowedOrigins, "Draft review without scope edits must preserve site scope exactly.");
+assert.deepEqual(reviewed.actionClasses, draft.actionClasses, "Draft review without scope edits must preserve action scope exactly.");
 assert.deepEqual(reviewed.budgets, draft.budgets, "Draft review must not widen or rewrite budgets.");
 assert.equal(validateSkill(reviewed).ok, true);
 assert.equal(draft.inputs.recipientEmail, undefined, "Draft review must not mutate the stored source object in place.");
@@ -81,6 +81,44 @@ const pruned = reviewSkillDraft(draft, {
 });
 assert.equal(pruned.inputs.department, undefined, "Removing the only step that uses an input must prune that unused input definition.");
 assert.ok(pruned.inputs.recipientEmail);
+
+const unusedOrigin = "https://unused.example.test";
+const widerRecordedDraft = structuredClone(draft);
+widerRecordedDraft.allowedOrigins = [origin, unusedOrigin];
+widerRecordedDraft.actionClasses = ["read", "page_write_prepare", "download"];
+assert.equal(validateSkill(widerRecordedDraft).ok, true);
+const narrowed = reviewSkillDraft(widerRecordedDraft, {
+  scopeEdits: { allowedOrigins: [origin], actionClasses: ["read", "page_write_prepare"] }
+});
+assert.deepEqual(narrowed.allowedOrigins, [origin], "Review may remove an unused recorded website.");
+assert.deepEqual(narrowed.actionClasses, ["read", "page_write_prepare"], "Review may remove an unused recorded action.");
+assert.deepEqual(widerRecordedDraft.allowedOrigins, [origin, unusedOrigin], "Scope narrowing must not mutate source history.");
+assert.deepEqual(widerRecordedDraft.actionClasses, ["read", "page_write_prepare", "download"]);
+
+const readOnly = reviewSkillDraft(widerRecordedDraft, {
+  stepEdits: {
+    "step-email": { remove: true },
+    "step-department": { remove: true },
+    "step-preview": { remove: true }
+  },
+  scopeEdits: { allowedOrigins: [origin], actionClasses: ["read"] }
+});
+assert.deepEqual(readOnly.actionClasses, ["read"], "After page-change steps are removed, their action scope may also be removed.");
+assert.deepEqual(readOnly.inputs, {}, "Removing all input-consuming steps must prune their runtime inputs.");
+assert.equal(readOnly.steps.at(-1).kind, "verify");
+
+assert.throws(() => reviewSkillDraft(widerRecordedDraft, {
+  scopeEdits: { allowedOrigins: [origin, "https://new.example.test"], actionClasses: widerRecordedDraft.actionClasses }
+}), /cannot add a new website/);
+assert.throws(() => reviewSkillDraft(widerRecordedDraft, {
+  scopeEdits: { allowedOrigins: widerRecordedDraft.allowedOrigins, actionClasses: ["read", "page_write_prepare", "download", "page_write_commit"] }
+}), /cannot add a new action/);
+assert.throws(() => reviewSkillDraft(widerRecordedDraft, {
+  scopeEdits: { allowedOrigins: [unusedOrigin], actionClasses: widerRecordedDraft.actionClasses }
+}), /kept step still uses/i);
+assert.throws(() => reviewSkillDraft(widerRecordedDraft, {
+  scopeEdits: { allowedOrigins: widerRecordedDraft.allowedOrigins, actionClasses: ["read", "download"] }
+}), /page_write_prepare/);
 
 assert.throws(() => reviewSkillDraft({ ...draft, status: "approved" }), /Only a draft skill version can be edited/);
 assert.throws(() => reviewSkillDraft(draft, { stepEdits: { "step-verify": { remove: true } } }), /final result check cannot be removed/);
@@ -97,6 +135,10 @@ for (const phrase of [
   "Review & edit draft",
   "Recorded runtime values are never displayed here.",
   "This screen cannot add websites, actions, permissions, budgets, or runtime values.",
+  "You can only make this draft narrower",
+  "Keep only the access this draft still needs",
+  "scopeOrigin",
+  "scopeAction",
   "The final result check cannot be removed.",
   'type: "saveDraft"',
   "Draft review saved. It is still a draft and has not gained any new permission.",
@@ -112,6 +154,10 @@ for (const phrase of [
   'original.status !== "draft"',
   "rewriteInputRefs",
   "collectInputRefs",
+  "narrowStringScope",
+  "assertKeptStepsFitScope",
+  "scopeEdits",
+  "Draft review cannot add a new",
   "validateSkill(next)",
   "The final result check cannot be removed."
 ]) if (!helperSource.includes(phrase)) throw new Error(`Skill draft review helper contract missing: ${phrase}`);

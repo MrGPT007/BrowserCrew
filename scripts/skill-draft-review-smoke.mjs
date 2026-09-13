@@ -15,6 +15,7 @@ let context;
 const report = { schemaVersion: 1, kind: "browsercrew.skill_draft_review_smoke", startedAt: new Date().toISOString(), checks: [] };
 
 const origin = "https://example.test";
+const unusedOrigin = "https://unused.example.test";
 const draft = {
   schemaVersion: 1,
   id: "review-recorded-form",
@@ -26,8 +27,8 @@ const draft = {
     emailAddress: { name: "emailAddress", type: "string", required: true, secret: false, label: "Email address" },
     department: { name: "department", type: "string", required: true, secret: false, label: "Department" }
   },
-  allowedOrigins: [origin],
-  actionClasses: ["read", "page_write_prepare"],
+  allowedOrigins: [origin, unusedOrigin],
+  actionClasses: ["read", "page_write_prepare", "download"],
   dataDestinations: [],
   budgets: { maxSteps: 18, maxMinutes: 30 },
   steps: [
@@ -75,10 +76,23 @@ try {
   await editor.waitFor({ state: "visible", timeout: timeoutMs });
   const editorText = await editor.innerText();
   assert.match(editorText, /cannot add websites, actions, permissions, budgets, or runtime values/i);
+  assert.match(editorText, /only make this draft narrower/i);
   assert.match(editorText, /Recorded runtime values are never displayed here/i);
   assert.equal(await editor.locator("[data-runtime-value]").count(), 0, "Draft review must not expose an input for recorded runtime values.");
+  assert.equal(await editor.locator("[data-scope-origin]").count(), 2, "Draft review should list only already-recorded websites.");
+  assert.equal(await editor.locator("[data-scope-action]").count(), 3, "Draft review should list only already-recorded actions.");
   pass("Draft review explains its narrow authority and exposes no demonstrated runtime values");
 
+  const requiredWrite = editor.locator('[data-scope-action="page_write_prepare"]');
+  await requiredWrite.uncheck();
+  await editor.getByRole("button", { name: "Save draft review" }).click();
+  await waitUntil(async () => /page_write_prepare/i.test(await panel.locator("#toast").innerText()), "Removing an action still required by kept steps should fail visibly.");
+  assert.equal(await editor.count(), 1, "Rejected scope narrowing must keep the editor open and persist nothing.");
+  await requiredWrite.check();
+  pass("Draft review refuses to remove site/action scope that kept steps still require");
+
+  await editor.locator(`[data-scope-origin="${unusedOrigin}"]`).uncheck();
+  await editor.locator('[data-scope-action="download"]').uncheck();
   await editor.locator("[data-draft-title]").fill("Prepare reviewed form");
   await editor.locator("[data-draft-description]").fill("Prepare the form with reviewed run-time inputs and verify the final review state.");
   const emailRow = editor.locator('[data-draft-input="emailAddress"]');
@@ -91,7 +105,7 @@ try {
   const finalKeep = editor.locator('[data-draft-step="step-verify"] [data-keep-step]');
   assert.equal(await finalKeep.isDisabled(), true, "The final result check removal control must stay disabled.");
   assert.equal(await finalKeep.isChecked(), true);
-  pass("User can rename draft metadata and runtime prompts, edit step descriptions, and remove a non-final recorded step");
+  pass("User can rename draft metadata and runtime prompts, edit step descriptions, remove a non-final step, and narrow unused scope");
 
   await editor.getByRole("button", { name: "Save draft review" }).click();
   await waitUntil(async () => /Draft review saved/i.test(await panel.locator("#toast").innerText()), "Draft review should save through the validated skill library runtime.");
@@ -113,12 +127,12 @@ try {
   assert.equal(saved.steps.some((step) => step.id === "step-preview"), false);
   assert.equal(saved.steps.at(-1).id, "step-verify");
   assert.equal(saved.steps.at(-1).expect.visibleText, "Ready to review");
-  assert.deepEqual(saved.allowedOrigins, draft.allowedOrigins);
-  assert.deepEqual(saved.actionClasses, draft.actionClasses);
+  assert.deepEqual(saved.allowedOrigins, [origin], "Saved review may only reduce the recorded website set.");
+  assert.deepEqual(saved.actionClasses, ["read", "page_write_prepare"], "Saved review may only reduce the recorded action set.");
   assert.deepEqual(saved.budgets, draft.budgets);
   assert.equal(JSON.stringify(saved).includes("person@example.com"), false);
   assert.equal(JSON.stringify(saved).includes("RUNTIME_SECRET_CANARY"), false);
-  pass("Saved review preserves exact draft identity, final verification, and existing scope without granting approval or persisting runtime literals");
+  pass("Saved review preserves exact draft identity and verification while narrowing scope without granting approval or persisting runtime literals");
 
   await panel.getByRole("button", { name: "Approve this version" }).waitFor({ state: "visible", timeout: timeoutMs });
   assert.match(await panel.locator("#versionedSkillList").innerText(), /Prepare reviewed form/);

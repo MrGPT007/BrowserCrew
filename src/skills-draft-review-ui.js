@@ -82,6 +82,7 @@ function createDraftEditor(skill) {
   editor.append(heading);
 
   editor.append(helper("Changes stay in this exact draft version. This screen cannot add websites, actions, permissions, budgets, or runtime values."));
+  editor.append(helper("You can only make this draft narrower: remove an unused recorded website or action, never add a new one."));
   editor.append(helper("Recorded runtime values are never displayed here. Rename the labels BrowserCrew asks for when the skill runs."));
 
   editor.append(fieldLabel("Draft name", "draftReviewTitle"));
@@ -99,6 +100,10 @@ function createDraftEditor(skill) {
   description.dataset.draftDescription = "true";
   editor.append(description);
 
+  editor.append(sectionHeading("SITES & ACTIONS", "Keep only the access this draft still needs"));
+  editor.append(helper("Uncheck recorded access only after removing every step that needs it. BrowserCrew will reject a save that would leave a kept step outside the remaining scope."));
+  editor.append(createScopeEditor(skill));
+
   const inputEntries = Object.entries(skill.inputs || {});
   if (inputEntries.length) {
     editor.append(sectionHeading("RUN-TIME INPUTS", "What BrowserCrew should ask for"));
@@ -107,7 +112,7 @@ function createDraftEditor(skill) {
   }
 
   editor.append(sectionHeading("RECORDED STEPS", "Keep only the steps you trust"));
-  editor.append(helper("Change the plain-language description or remove a recorded step. Semantic targets, sites, and permissions cannot be widened here."));
+  editor.append(helper("Change the plain-language description or remove a recorded step. Semantic targets cannot be changed here, and site/action scope can only be reduced."));
   skill.steps.forEach((step, index) => editor.append(createStepEditor(step, index === skill.steps.length - 1)));
 
   const row = document.createElement("div");
@@ -126,6 +131,50 @@ function createDraftEditor(skill) {
   editor.append(row);
   editor.append(helper("Saving does not approve this version. You can review it again before choosing “Approve this version”."));
   return editor;
+}
+
+function createScopeEditor(skill) {
+  const wrap = document.createElement("div");
+  wrap.className = "selection-summary";
+  wrap.dataset.draftScope = "true";
+
+  const sites = document.createElement("div");
+  const siteHeading = document.createElement("strong");
+  siteHeading.textContent = "Recorded websites";
+  sites.append(siteHeading);
+  for (const origin of skill.allowedOrigins || []) {
+    sites.append(scopeChoice(origin, "scopeOrigin", origin, `Website: ${origin}`));
+  }
+
+  const actions = document.createElement("div");
+  const actionHeading = document.createElement("strong");
+  actionHeading.textContent = "Recorded actions";
+  actions.append(actionHeading);
+  for (const action of skill.actionClasses || []) {
+    actions.append(scopeChoice(action, "scopeAction", action, actionLabel(action)));
+  }
+
+  wrap.append(sites, actions);
+  return wrap;
+}
+
+function scopeChoice(value, datasetKey, rawValue, text) {
+  const label = document.createElement("label");
+  label.className = "field-label";
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = true;
+  checkbox.value = rawValue;
+  checkbox.dataset[datasetKey] = value;
+  label.append(checkbox, document.createTextNode(` ${text}`));
+  return label;
+}
+
+function actionLabel(action) {
+  if (action === "read") return "Read page information";
+  if (action === "page_write_prepare") return "Prepare page changes";
+  if (action === "download") return "Download files";
+  return `Action: ${action}`;
 }
 
 function createInputEditor(name, definition) {
@@ -216,12 +265,17 @@ async function saveDraftReview(button) {
         remove: row.querySelector("[data-keep-step]")?.checked === false
       };
     }
+    const scopeEdits = {
+      allowedOrigins: [...editor.querySelectorAll("[data-scope-origin]:checked")].map((item) => item.value),
+      actionClasses: [...editor.querySelectorAll("[data-scope-action]:checked")].map((item) => item.value)
+    };
 
     const reviewed = reviewSkillDraft(response.skill, {
       title: editor.querySelector("[data-draft-title]")?.value || "",
       description: editor.querySelector("[data-draft-description]")?.value || "",
       inputEdits,
-      stepEdits
+      stepEdits,
+      scopeEdits
     });
     const saved = await portRequest(SKILLS_PORT, { type: "saveDraft", skill: reviewed });
     if (!saved.ok) throw new Error(saved.error?.message || "BrowserCrew could not save this draft review.");
