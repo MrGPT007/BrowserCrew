@@ -6,6 +6,7 @@ const execFileAsync = promisify(execFile);
 const files = [
   "src/schedule-controls-runtime.js",
   "src/schedule-controls-ui.js",
+  "src/schedule-run-history-mutation.js",
   "src/service-worker.js",
   "src/sidepanel.js",
   "scripts/schedule-lifecycle-smoke.mjs",
@@ -17,7 +18,7 @@ const files = [
   "manifest.json"
 ];
 for (const file of files) await access(file);
-for (const file of ["src/schedule-controls-runtime.js", "src/schedule-controls-ui.js", "scripts/schedule-lifecycle-smoke.mjs", "scripts/schedule-control-worker-bootstrap.js", "scripts/schedule-control-run-history-race-check.mjs"]) {
+for (const file of ["src/schedule-controls-runtime.js", "src/schedule-controls-ui.js", "src/schedule-run-history-mutation.js", "scripts/schedule-lifecycle-smoke.mjs", "scripts/schedule-control-worker-bootstrap.js", "scripts/schedule-control-run-history-race-check.mjs"]) {
   await execFileAsync(process.execPath, ["--check", file]);
 }
 await execFileAsync(process.execPath, ["scripts/schedule-control-run-history-race-check.mjs"]);
@@ -42,8 +43,19 @@ for (const phrase of [
   'SCHEDULE_PAUSED',
   'trigger: "manual"',
   'reviewMissedScheduleRun(receipt.id, "run_once")',
-  'removeManualReceipt(receipt.id)'
+  'removeManualReceipt(receipt.id)',
+  'from "./schedule-run-history-mutation.js"',
+  'await withScheduleRunHistoryMutation(async () =>',
+  'return withScheduleRunHistoryMutation(async () =>'
 ]) if (!runtime.includes(phrase)) throw new Error(`Schedule control runtime contract missing: ${phrase}`);
+
+const sharedHistory = await readFile("src/schedule-run-history-mutation.js", "utf8");
+for (const phrase of [
+  "let scheduleRunHistoryMutation = null",
+  "export async function withScheduleRunHistoryMutation(work)",
+  "const previous = scheduleRunHistoryMutation || Promise.resolve()",
+  "if (scheduleRunHistoryMutation === current) scheduleRunHistoryMutation = null"
+]) if (!sharedHistory.includes(phrase)) throw new Error(`Shared schedule run-history mutation contract missing: ${phrase}`);
 
 const ui = await readFile("src/schedule-controls-ui.js", "utf8");
 for (const phrase of [

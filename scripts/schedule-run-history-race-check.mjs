@@ -283,12 +283,20 @@ await proveAdvanceVsDelete();
 await proveAdvanceVsEdit();
 
 const runtimeSource = await readFile(new URL("../src/schedules-runtime.js", import.meta.url), "utf8");
+const controlsSource = await readFile(new URL("../src/schedule-controls-runtime.js", import.meta.url), "utf8");
+const sharedHistorySource = await readFile(new URL("../src/schedule-run-history-mutation.js", import.meta.url), "utf8");
 for (const phrase of [
-  "let runHistoryMutation = null",
-  "async function withRunHistoryMutation(work)",
-  "const previous = runHistoryMutation || Promise.resolve()",
-  "if (runHistoryMutation === current) runHistoryMutation = null"
-]) assert.ok(runtimeSource.includes(phrase), `Shared schedule-run history serialization contract missing: ${phrase}`);
+  "let scheduleRunHistoryMutation = null",
+  "export async function withScheduleRunHistoryMutation(work)",
+  "const previous = scheduleRunHistoryMutation || Promise.resolve()",
+  "if (scheduleRunHistoryMutation === current) scheduleRunHistoryMutation = null"
+]) assert.ok(sharedHistorySource.includes(phrase), `Shared cross-module schedule-run history serialization contract missing: ${phrase}`);
+assert.ok(runtimeSource.includes('from "./schedule-run-history-mutation.js"'), "Schedule runtime must use the shared cross-module run-history mutex.");
+assert.ok(controlsSource.includes('from "./schedule-run-history-mutation.js"'), "Schedule control runtime must use the same shared cross-module run-history mutex.");
+assert.ok(runtimeSource.includes("return withScheduleRunHistoryMutation(async () =>"), "Scheduled run receipt mutations must execute under the shared run-history mutex.");
+assert.ok(controlsSource.includes("await withScheduleRunHistoryMutation(async () =>"), "Run-now receipt creation must execute under the shared run-history mutex.");
+assert.ok(controlsSource.includes("return withScheduleRunHistoryMutation(async () =>"), "Run-now receipt cleanup must execute under the shared run-history mutex.");
+assert.equal(runtimeSource.includes("let runHistoryMutation = null"), false, "Schedule runtime must not retain an isolated module-local run-history queue.");
 const sharedStateSource = await readFile(new URL("../src/schedule-state-mutation.js", import.meta.url), "utf8");
 for (const phrase of [
   "let scheduleStateMutation = null",

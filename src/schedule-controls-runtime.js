@@ -5,6 +5,7 @@ import {
   reviewMissedScheduleRun,
   setScheduleEnabled
 } from "./schedules-runtime.js";
+import { withScheduleRunHistoryMutation } from "./schedule-run-history-mutation.js";
 
 const SCHEDULE_RUNS_KEY = "browsercrew.scheduleRuns.v1";
 const SCHEDULE_CONTROLS_PORT = "browsercrew-schedule-controls";
@@ -56,8 +57,10 @@ export async function runScheduleNow(scheduleId) {
     completedAt: null
   };
 
-  const existingRuns = await listScheduleRuns();
-  await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: [receipt, ...existingRuns].slice(0, MAX_RUN_RECEIPTS) });
+  await withScheduleRunHistoryMutation(async () => {
+    const existingRuns = await listScheduleRuns();
+    await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: [receipt, ...existingRuns].slice(0, MAX_RUN_RECEIPTS) });
+  });
 
   try {
     const result = await reviewMissedScheduleRun(receipt.id, "run_once");
@@ -83,9 +86,10 @@ async function assertLiveSchedulerFor(scheduleId) {
 }
 
 async function removeManualReceipt(runId) {
-  const data = await chrome.storage.local.get(SCHEDULE_RUNS_KEY);
-  const runs = Array.isArray(data[SCHEDULE_RUNS_KEY]) ? data[SCHEDULE_RUNS_KEY] : [];
-  await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.filter((run) => run.id !== runId) });
+  return withScheduleRunHistoryMutation(async () => {
+    const runs = await listScheduleRuns();
+    await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.filter((run) => run.id !== runId) });
+  });
 }
 
 function safeError(error) { return { code: error?.code || "SCHEDULE_CONTROL_ERROR", message: error?.message || "BrowserCrew could not update this schedule." }; }
