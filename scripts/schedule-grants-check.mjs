@@ -154,4 +154,6 @@ assert.equal(serviceWorker.includes("bootSchedulesRuntime"), false, "Durable gra
 const manifest = JSON.parse(await readFile("manifest.json", "utf8"));
 assert.equal((manifest.permissions || []).includes("alarms"), false, "Durable grant review must not add alarms permission before activation.");
 
+await import("./schedule-grant-state-race-check.mjs");
+
 console.log("BrowserCrew durable exact-schedule grant lifecycle contracts passed.");
