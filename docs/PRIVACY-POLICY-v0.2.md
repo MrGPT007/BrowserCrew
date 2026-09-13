@@ -1,10 +1,10 @@
 # BrowserCrew v0.2 Privacy Policy
 
-Last updated: 12 September 2026.
+Last updated: 13 September 2026.
 
 BrowserCrew is a Chrome extension that lets you run user-approved AI-assisted tasks on browser pages you choose, using AI services and optional MCP servers you configure. BrowserCrew is designed so page access, model connections, writes, downloads, and tool calls stay tied to explicit user actions and tested runtime boundaries.
 
-This repository policy is the source draft for the public privacy policy used by the Chrome Web Store listing. Before public submission, publish this policy at a stable HTTPS URL and place that URL in the Chrome Web Store Developer Dashboard.
+This is the public privacy policy for BrowserCrew v0.2. Its stable public HTTPS URL is https://github.com/MrGPT007/BrowserCrew/blob/main/docs/PRIVACY-POLICY-v0.2.md. BrowserCrew's public support channel is https://github.com/MrGPT007/BrowserCrew/issues.
 
 ## What BrowserCrew handles
 
@@ -101,4 +101,6 @@ If BrowserCrew changes what user data it handles or how that data is used or sha
 
 ## Contact and support
 
-Before Chrome Web Store submission, the developer must publish a support/contact channel and a stable HTTPS URL for this privacy policy. The final public policy should identify that contact method here.
+For BrowserCrew support or privacy questions, use the public issue tracker at https://github.com/MrGPT007/BrowserCrew/issues. This is the current public support channel.
+
+Do not include provider credentials, API keys, private page content, private attachments, or other sensitive data in a public issue. If a report would require sensitive information, do not post that information publicly.
