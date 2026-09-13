@@ -10,15 +10,17 @@ const files = [
   "src/sidepanel.js",
   "scripts/schedule-lifecycle-smoke.mjs",
   "scripts/schedule-control-worker-bootstrap.js",
+  "scripts/schedule-control-run-history-race-check.mjs",
   "scripts/previous-stable-runner.mjs",
   ".github/workflows/quality.yml",
   "package.json",
   "manifest.json"
 ];
 for (const file of files) await access(file);
-for (const file of ["src/schedule-controls-runtime.js", "src/schedule-controls-ui.js", "scripts/schedule-lifecycle-smoke.mjs", "scripts/schedule-control-worker-bootstrap.js"]) {
+for (const file of ["src/schedule-controls-runtime.js", "src/schedule-controls-ui.js", "scripts/schedule-lifecycle-smoke.mjs", "scripts/schedule-control-worker-bootstrap.js", "scripts/schedule-control-run-history-race-check.mjs"]) {
   await execFileAsync(process.execPath, ["--check", file]);
 }
+await execFileAsync(process.execPath, ["scripts/schedule-control-run-history-race-check.mjs"]);
 
 const manifest = JSON.parse(await readFile("manifest.json", "utf8"));
 if ((manifest.permissions || []).includes("alarms")) throw new Error("Pre-activation schedule controls must not add alarms to the production manifest.");
