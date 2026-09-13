@@ -111,7 +111,8 @@ for (const phrase of [
   "SCHEDULE_BINDING_ACTIVE_GRANT_PRESENT",
   "delete schedule.startResource",
   "delete schedule.authorityPlan",
-  "preservePreparedMetadata(schedule, schedules[index], skillResult.skill)",
+  "preservePreparedMetadata(schedule, existingSnapshot, skillResult.skill)",
+  "assertScheduleTargetUnchanged(current, existingSnapshot)",
   "schedule.startResource = structuredClone(existing.startResource)",
   "schedule.authorityPlan = structuredClone(existing.authorityPlan)"
 ]) assert.ok(runtimeSource.includes(phrase), `Prepared schedule runtime binding contract missing: ${phrase}`);

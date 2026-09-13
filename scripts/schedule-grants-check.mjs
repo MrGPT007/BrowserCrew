@@ -104,9 +104,10 @@ for (const phrase of [
 const schedulesRuntime = await readFile("src/schedules-runtime.js", "utf8");
 for (const phrase of [
   'from "./schedule-grants-runtime.js"',
-  "await assertScheduleEditAllowedWithGrant(schedules[index], schedule)",
+  "await assertScheduleEditAllowedWithGrant(existingSnapshot, schedule)",
+  "assertScheduleTargetUnchanged(current, existingSnapshot)",
   "await resolveActiveScheduleGrant(schedule.grantRefs, { schedule, skill: skillResult.skill })",
-  "await resolveActiveScheduleGrant(exact.grantRefs, { schedule: exact, skill: skillResult.skill })",
+  "await resolveActiveScheduleGrant(existing.grantRefs, { schedule: existing, skill: skillResult.skill })",
   "await revokeScheduleGrantsForDeletedSchedule(scheduleId)"
 ]) assert.ok(schedulesRuntime.includes(phrase), `Schedule storage authority boundary missing: ${phrase}`);
 
