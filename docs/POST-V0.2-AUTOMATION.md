@@ -90,18 +90,40 @@ A scheduled run is a normal BrowserCrew execution and must re-check:
 
 A schedule cannot convert a draft/unreviewed Watch Me recording into an executable job.
 
+### Fail-closed schedule dispatcher
+
+`src/schedule-dispatcher.js` is the pre-activation bridge from a validated schedule to the exact approved Skill executor. It is intentionally not imported or booted by the production service worker while v0.2 remains active.
+
+The dispatcher does not guess the active tab. A future activation layer must resolve the saved starting resource explicitly and return a fresh tab/resource binding inside the Skill's approved origin/resource scope. If BrowserCrew cannot re-find that resource, dispatch is blocked.
+
+A scheduled run requires a schedule-scoped grant pinned to the exact Skill id/version. Skill requirements never manufacture authority. The saved grant must still cover every required origin, action class, resource, provider capability, and data destination, and it must still be unexpired and unrevoked.
+
+Provider selection is also revalidated. The named provider must still match the schedule, be available, and expose every capability required by the exact Skill version. Runtime secrets are not stored in the schedule dispatcher.
+
+Unattended inputs are fail-closed. Secret inputs are never persisted or guessed. A non-secret input may run unattended only when the approved Skill already contains a reviewed default that still validates against that exact version.
+
+The dispatcher performs an initial readiness pass and then re-resolves provider, grant, and starting resource immediately before execution. This closes the gap where authority, provider state, or the selected browser resource changes after preflight. Any blocker is raised before the exact-version Skill executor creates a run receipt.
+
 ## Current implementation on feature branch
 
-- `src/skills-contract.js` — declarative skill validation, approval, and input materialization.
-- `src/watch-me-contract.js` — scoped demonstration sessions, semantic event sanitization, secret-safe input parameterization, and draft-skill creation.
-- `src/schedules-contract.js` — version-pinned schedule validation, dispatch guards, alarm naming/reconciliation, and timezone-aware next-run calculation.
-- `scripts/skills-automation-check.mjs` — contract tests for secret redaction, scope changes, code-injection rejection, exact-version scheduling, stale/revoked-resource blocking, alarm reconciliation, and timezone behavior.
+- `src/skills-contract.js` — declarative Skill validation, approval, semantic waits/verification, metadata, compatibility, and input materialization.
+- `src/skills-runtime.js` / `src/skills-runner.js` — immutable exact-version execution, durable Skill receipts, runtime grants, semantic target re-resolution, completion verification, and no-blind-write-retry recovery.
+- `src/watch-me-contract.js` / `src/watch-me-runtime.js` — scoped semantic demonstration recording, secret-safe input parameterization, completion evidence, restart recovery, and draft-Skill creation.
+- `src/schedules-contract.js` — version-pinned schedule validation, dispatch guards, concurrency/missed-run rules, alarm naming/reconciliation, and timezone-aware next-run calculation.
+- `src/schedules-runtime.js` — durable schedule storage/receipts, restart reconciliation, missed-run review, bounded queue-one behavior, alarm lifecycle contract, and exact run linkage. Production boot is intentionally disabled.
+- `src/schedule-setup-ui.js` — prepare/edit/delete UX with exact Skill/provider/scope/budget/history details while activation controls remain locked.
+- `src/schedule-dispatcher.js` — fail-closed readiness/execution bridge for exact approved Skills. It is not wired into production boot yet.
+- installed-extension coverage proves Watch Me, Skill lifecycle/version/Test/Run, missed-run review, prepared schedules, scheduler restart behavior, and scheduled normal-task Stop/Pause on current Chrome and pinned Chrome 152.
 
-## Next implementation slices
+## Remaining activation boundary
 
-1. Skills storage/library UI and exact-version runner integration with the existing task engine.
-2. Watch Me content recorder with persistent visible recording indicator and service-worker recovery.
-3. Skill review/editor and fixture replay test.
-4. Schedule storage/service-worker alarm reconciler and run history.
-5. Full installed-extension tests on current stable and previous stable Chrome.
-6. Only after v0.2 is frozen/tagged: update manifest/Web Store permissions for scheduling and merge this feature track.
+Before a post-v0.2 scheduling release can turn this on, BrowserCrew still needs the intentionally deferred activation slice:
+
+1. persist/review a concrete schedule starting-resource binding and durable schedule grant instead of guessing current browser state;
+2. implement production resolvers for the named provider, exact grant, and saved resource binding;
+3. wire `createScheduleSkillDispatcher(...)` into scheduler boot;
+4. add `alarms` to the post-v0.2 manifest and update Web Store permission disclosures;
+5. enable Run now / Pause schedule controls against the live scheduler; and
+6. run the complete current + previous-stable release matrix again on the activation candidate.
+
+None of those activation steps should be backported into the v0.2 Web Store candidate.
