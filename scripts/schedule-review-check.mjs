@@ -4,7 +4,10 @@ const storage = new Map();
 const listeners = { connect: [], alarm: [], startup: [], installed: [] };
 const alarms = new Map();
 const alarmsApi = {
-  onAlarm: { addListener(listener) { listeners.alarm.push(listener); } },
+  onAlarm: {
+    addListener(listener) { listeners.alarm.push(listener); },
+    hasListeners() { return listeners.alarm.length > 0; }
+  },
   async create(name, spec) { alarms.set(name, { name, scheduledTime: spec.when || Date.now(), ...spec }); },
   async clear(name) { return alarms.delete(name); },
   async get(name) { return alarms.get(name) || null; },
@@ -15,11 +18,21 @@ let concurrentReviewBarrier = null;
 let concurrentReviewBarrierRelease = null;
 let concurrentReviewReads = 0;
 let concurrentReviewBarrierEnabled = false;
+let manualQueueBarrier = null;
 
 function armConcurrentReviewReadBarrier() {
   concurrentReviewReads = 0;
   concurrentReviewBarrierEnabled = true;
   concurrentReviewBarrier = new Promise((resolve) => { concurrentReviewBarrierRelease = resolve; });
+}
+
+function armManualQueueDispatchBarrier() {
+  let startedResolve = null;
+  let releaseResolve = null;
+  const started = new Promise((resolve) => { startedResolve = resolve; });
+  const release = new Promise((resolve) => { releaseResolve = resolve; });
+  manualQueueBarrier = { claimed: false, startedResolve, release, releaseResolve };
+  return { started, release: () => releaseResolve() };
 }
 
 globalThis.chrome = {
@@ -180,6 +193,16 @@ assert.equal(deletedDraft.ok, true);
 schedules = await runtime.listSchedules();
 assert.equal(schedules.some((item) => item.id === preparedDraft.id), false, "Prepared schedule must be deletable without alarms permission.");
 
+const manualQueueSchedule = {
+  ...schedule,
+  id: "manual-queue",
+  name: "Manual queue",
+  concurrencyPolicy: "queue_one",
+  createdAt: "2026-09-12T00:02:00.000Z",
+  updatedAt: "2026-09-12T00:02:00.000Z"
+};
+await chrome.storage.local.set({ [SCHEDULES_KEY]: [...schedules, manualQueueSchedule] });
+
 const skipped = await runtime.reviewMissedScheduleRun("skip-me", "skip");
 assert.equal(skipped.ok, true);
 assert.equal(skipped.run.status, "skipped");
@@ -200,10 +223,26 @@ assert.equal(pending.reviewDecision, "run_once");
 // Only the future scheduler-enabled release supplies chrome.alarms and boots dispatch.
 chrome.alarms = alarmsApi;
 const dispatchCalls = [];
+let manualQueueActiveDispatches = 0;
+let manualQueueMaxActiveDispatches = 0;
 await runtime.bootSchedulesRuntime({
   async dispatch(input) {
     dispatchCalls.push(structuredClone(input));
     if (input.mode === "preflight") return { grantsValid: true, providerAvailable: true, resourceFresh: true };
+    if (input.schedule?.id === manualQueueSchedule.id) {
+      manualQueueActiveDispatches += 1;
+      manualQueueMaxActiveDispatches = Math.max(manualQueueMaxActiveDispatches, manualQueueActiveDispatches);
+      try {
+        if (manualQueueBarrier && !manualQueueBarrier.claimed) {
+          manualQueueBarrier.claimed = true;
+          manualQueueBarrier.startedResolve();
+          await manualQueueBarrier.release;
+        }
+        return { ok: true, taskId: `task-manual-queue-${dispatchCalls.length}` };
+      } finally {
+        manualQueueActiveDispatches -= 1;
+      }
+    }
     return { ok: true, taskId: "task-scheduled-review-001" };
   }
 });
@@ -241,6 +280,29 @@ assert.equal(rejectedReviews[0].reason?.code, "SCHEDULE_REVIEW_NOT_PENDING", "Th
 assert.equal(dispatchCalls.length, dispatchBaseline + 2, "One claimed missed receipt may perform only one preflight and one task dispatch.");
 runs = (await chrome.storage.local.get(SCHEDULE_RUNS_KEY))[SCHEDULE_RUNS_KEY];
 assert.equal(runs.find((run) => run.id === "race-me")?.status, "completed", "The single claimed concurrent review must leave one completed durable receipt.");
+
+const controls = await import("../src/schedule-controls-runtime.js");
+const manualDispatchBaseline = dispatchCalls.filter((call) => call.schedule?.id === manualQueueSchedule.id && call.mode !== "preflight").length;
+const manualBarrier = armManualQueueDispatchBarrier();
+const firstManualRunPromise = controls.runScheduleNow(manualQueueSchedule.id);
+await manualBarrier.started;
+const secondManualRun = await controls.runScheduleNow(manualQueueSchedule.id);
+assert.equal(secondManualRun.ok, true, "The second Run now request may be accepted into the one-item queue.");
+assert.equal(secondManualRun.queued, true, "The second Run now request must be durably queued while the first dispatch is active.");
+assert.equal(secondManualRun.run.status, "queued");
+manualBarrier.release();
+const firstManualRun = await firstManualRunPromise;
+assert.equal(firstManualRun.ok, true);
+assert.equal(firstManualRun.run.status, "completed");
+
+runs = (await chrome.storage.local.get(SCHEDULE_RUNS_KEY))[SCHEDULE_RUNS_KEY];
+const manualRuns = runs.filter((run) => run.scheduleId === manualQueueSchedule.id && run.trigger === "manual");
+assert.equal(manualRuns.length, 2, "Both manual Run now requests must retain durable receipts.");
+assert.equal(manualRuns.filter((run) => run.status === "completed").length, 2, "A queued manual Run now receipt must drain automatically after the active manual dispatch completes.");
+assert.equal(manualRuns.filter((run) => run.status === "queued").length, 0, "No manual queue receipt may remain stranded after the schedule slot becomes free.");
+const manualTaskCalls = dispatchCalls.filter((call) => call.schedule?.id === manualQueueSchedule.id && call.mode !== "preflight");
+assert.equal(manualTaskCalls.length, manualDispatchBaseline + 2, "Two accepted manual Run now requests must produce exactly two sequential task dispatches.");
+assert.equal(manualQueueMaxActiveDispatches, 1, "queue_one manual runs must never overlap task dispatch.");
 
 await assert.rejects(
   runtime.reviewMissedScheduleRun("skip-me", "anything"),
