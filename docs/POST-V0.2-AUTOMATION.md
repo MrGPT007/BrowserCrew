@@ -106,9 +106,9 @@ The authority plan is requirements data, not permission. It cannot contain `scop
 
 A schedule grant is pinned to one exact schedule ID, one exact Skill id/version, and one exact provider reference. It copies only the reviewed origin/resource/action/provider-capability/data-destination scope, has an explicit expiration, and rejects secrets, runtime inputs, headers, cookies, provider credentials, and Chrome tab IDs. One schedule cannot reuse another schedule's authority.
 
-While an active grant is referenced, ordinary edits cannot silently move that authority to a different Skill version or AI connection, and starting-page changes are blocked. The user must revoke the current permission first, review the changed schedule, and explicitly approve a replacement. Revocation removes the executable reference from the schedule but preserves the revoked grant receipt for audit. Deleting a prepared schedule revokes any remaining active grant before the schedule record is removed.
+While an active grant is referenced, ordinary edits cannot silently move that authority to a different Skill version or AI connection, and starting-page changes are blocked. The user must revoke the current permission first, review the changed schedule, and explicitly approve a replacement. If the schedule is enabled, standalone revocation is rejected with `SCHEDULE_GRANT_PAUSE_REQUIRED`: the user must **Pause schedule** first so BrowserCrew clears the exact Chrome alarm before removing executable authority. Revocation then removes the executable reference from the schedule while preserving the revoked grant receipt for audit. Delete-time revocation remains a separate atomic path so deleting a schedule can revoke any remaining active grant while the schedule/alarm lifecycle is removed.
 
-This permission remains pre-activation data: approving or revoking it creates no alarm and no schedule-run receipt, and the schedule stays disabled. Future activation must still revalidate expiry/revocation, exact provider identity, exact Skill version, scope, and the freshly re-resolved resource immediately before dispatch.
+Approval remains pre-activation data on the current feature branch: approving future permission creates no alarm and no schedule-run receipt, and production scheduling remains disabled. Future activation must still revalidate expiry/revocation, exact provider identity, exact Skill version, scope, and the freshly re-resolved resource immediately before dispatch.
 
 ### Provider and starting-resource resolvers
 
@@ -132,6 +132,14 @@ Unattended inputs are fail-closed. Secret inputs are never persisted or guessed.
 
 The dispatcher performs an initial readiness pass and then re-resolves provider, grant, and starting resource immediately before execution. This closes the gap where authority, provider state, or the selected browser resource changes after preflight. Any blocker is raised before the exact-version Skill executor creates a run receipt.
 
+### Guarded lifecycle controls
+
+`src/schedule-controls-runtime.js` and `src/schedule-controls-ui.js` now contain the post-v0.2 **Turn on schedule**, **Run now**, and **Pause schedule** control plumbing without activating production scheduling. The UI exposes these controls only when the runtime reports `schedulerBooted=true`; with the current production manifest/service-worker boundary they remain hidden/inert.
+
+**Run now** requires an enabled schedule, a live scheduler listener, and the exact Chrome alarm before it will dispatch. It reuses the reviewed schedule dispatch path rather than bypassing policy/grants. A manual run creates a normal schedule run receipt with `trigger: "manual"`, but deliberately does not move `nextRunAt` or impersonate a scheduled `lastRunAt` occurrence. **Pause schedule** delegates to the existing enable/disable lifecycle and clears the exact alarm. A paused Run-now request fails closed before manufacturing history.
+
+The installed-extension lifecycle proof additionally verifies that an enabled schedule cannot lose its durable permission while its exact alarm is live: standalone revoke is blocked, Pause clears the alarm, and only then can the grant be revoked.
+
 ## Current implementation on feature branch
 
 - `src/skills-contract.js` — declarative Skill validation, approval, semantic waits/verification, metadata, compatibility, and input materialization.
@@ -139,12 +147,21 @@ The dispatcher performs an initial readiness pass and then re-resolves provider,
 - `src/watch-me-contract.js` / `src/watch-me-runtime.js` — scoped semantic demonstration recording, secret-safe input parameterization, completion evidence, restart recovery, and draft-Skill creation.
 - `src/schedules-contract.js` — version-pinned schedule validation, dispatch guards, concurrency/missed-run rules, alarm naming/reconciliation, and timezone-aware next-run calculation.
 - `src/schedules-runtime.js` — durable schedule storage/receipts, restart reconciliation, missed-run review, bounded queue-one behavior, alarm lifecycle contract, exact run linkage, prepared starting-page review, protected edits under durable authority, and revoke-before-delete. Production boot is intentionally disabled.
-- `src/schedule-setup-ui.js` — prepare/edit/delete UX with exact Skill/provider/scope/budget/history details while activation controls remain locked.
+- `src/schedule-setup-ui.js` — prepare/edit/delete UX with exact Skill/provider/scope/budget/history details.
 - `src/schedule-prepared-metadata.js` / `src/schedule-binding-ui.js` — canonical starting-page review plus an inert, exact-Skill authority plan with no tab ID and no grant.
-- `src/schedule-grants-contract.js` / `src/schedule-grants-runtime.js` / `src/schedule-grants-ui.js` — explicit expiring schedule permission approval/revocation pinned to exact schedule, provider, Skill and scope while schedules remain disabled.
+- `src/schedule-grants-contract.js` / `src/schedule-grants-runtime.js` / `src/schedule-grants-ui.js` — explicit expiring schedule permission approval/revocation pinned to exact schedule, provider, Skill and scope; enabled schedules must Pause before standalone permission revocation.
 - `src/schedule-resolvers.js` — exact named-provider and exact reviewed-page resolver primitives with existing-site-permission checks, no active-tab fallback, and fail-closed semantic-resource handling. It is not wired into production scheduler boot yet.
 - `src/schedule-dispatcher.js` — fail-closed readiness/execution bridge for exact approved Skills. It is not wired into production boot yet.
-- installed-extension coverage proves Watch Me, Skill lifecycle/version/Test/Run, missed-run review, prepared schedules, starting-page binding, durable grant replacement/revocation, provider/resource resolution, scheduler restart behavior, and scheduled normal-task Stop/Pause on current Chrome and pinned Chrome 152.
+- `src/schedule-controls-runtime.js` / `src/schedule-controls-ui.js` — guarded Turn on / Run now / Pause plumbing that is capability-gated on a genuinely booted scheduler and therefore remains hidden in production pre-activation state.
+- installed-extension coverage proves Watch Me, Skill lifecycle/version/Test/Run, missed-run review, prepared schedules, starting-page binding, durable grant replacement/revocation, provider/resource resolution, scheduler restart behavior, scheduled normal-task Stop/Pause, guarded Run-now/Pause lifecycle controls, and Pause-before-revoke alarm safety on current Chrome and pinned Chrome 152.
+
+### Post-v0.2 Web Store `alarms` disclosure draft
+
+This text is **not** part of the active v0.2 listing and does not justify adding the permission early. It is the draft explanation for the future feature release that actually enables scheduling:
+
+> **Alarms permission:** BrowserCrew uses Chrome alarms only for schedules the user explicitly creates and turns on. Alarms wake the extension service worker at the requested time so BrowserCrew can re-check the exact saved Skill version, permission grant, AI connection, reviewed browser resource, budgets, and verification rules before deciding whether the task is allowed to run. BrowserCrew does not use alarms for advertising, tracking, background browsing, or to claim it can wake a sleeping/offline device. Pausing or deleting a schedule clears its alarm.
+
+The future store submission must keep this disclosure synchronized with the shipped manifest and must still explain that missed schedules may be skipped, run once when available, or require user review according to the user's chosen policy.
 
 ## Remaining activation boundary
 
@@ -152,8 +169,8 @@ Before a post-v0.2 scheduling release can turn this on, BrowserCrew still needs 
 
 1. supply real semantic resource-ID verifiers for any scheduled Skill that declares non-empty `allowedResources`; unsupported resource types remain blocked;
 2. compose the named-provider resolver, active-grant resolver, starting-resource resolver, and `createScheduleSkillDispatcher(...)` into scheduler boot;
-3. add `alarms` to the post-v0.2 manifest and update Web Store permission disclosures;
-4. enable Run now / Pause schedule controls against the live scheduler; and
+3. add `alarms` to the post-v0.2 manifest and synchronize the Chrome Web Store disclosure with the shipped permission set;
+4. expose the already-implemented guarded lifecycle controls only through the genuinely booted production scheduler capability and verify their live behavior against that composition; and
 5. run the complete current + previous-stable release matrix again on the activation candidate.
 
 None of those activation steps should be backported into the v0.2 Web Store candidate.
