@@ -23,6 +23,7 @@ const MAX_SCHEDULES = 100;
 const MAX_RUN_RECEIPTS = 500;
 const ALARM_PREFIX = "browsercrew.schedule.";
 let booted = false;
+let bootPromise = null;
 let dispatchScheduledRun = null;
 
 chrome.runtime.onConnect.addListener((port) => {
@@ -50,14 +51,44 @@ async function handleScheduleMessage(message) {
 
 export async function bootSchedulesRuntime({ dispatch } = {}) {
   if (booted) return;
+  if (bootPromise) return bootPromise;
   if (!chrome.alarms?.onAlarm) throw coded("ALARMS_PERMISSION_REQUIRED", "Scheduling needs Chrome's alarms permission. Enable it only in the BrowserCrew release that ships schedules.");
   if (typeof dispatch !== "function") throw coded("SCHEDULE_DISPATCH_REQUIRED", "The schedule runtime needs BrowserCrew's normal task dispatcher.");
+
   dispatchScheduledRun = dispatch;
   chrome.alarms.onAlarm.addListener(onAlarm);
-  chrome.runtime.onStartup.addListener(() => reconcileScheduleAlarms().catch(() => {}));
-  chrome.runtime.onInstalled.addListener(() => reconcileScheduleAlarms().catch(() => {}));
-  await reconcileScheduleAlarms();
-  booted = true;
+  chrome.runtime.onStartup.addListener(onStartupReconcile);
+  chrome.runtime.onInstalled.addListener(onInstalledReconcile);
+
+  bootPromise = (async () => {
+    try {
+      await reconcileScheduleAlarms();
+      booted = true;
+    } catch (error) {
+      removeBootListeners();
+      dispatchScheduledRun = null;
+      throw error;
+    } finally {
+      bootPromise = null;
+    }
+  })();
+  return bootPromise;
+}
+
+function onStartupReconcile() {
+  if (!booted) return;
+  reconcileScheduleAlarms().catch(() => {});
+}
+
+function onInstalledReconcile() {
+  if (!booted) return;
+  reconcileScheduleAlarms().catch(() => {});
+}
+
+function removeBootListeners() {
+  chrome.alarms.onAlarm.removeListener?.(onAlarm);
+  chrome.runtime.onStartup.removeListener?.(onStartupReconcile);
+  chrome.runtime.onInstalled.removeListener?.(onInstalledReconcile);
 }
 
 export async function listSchedules() {
@@ -250,6 +281,14 @@ async function syncOneAlarm(schedule) {
 
 async function onAlarm(alarm) {
   if (!alarm?.name?.startsWith(ALARM_PREFIX)) return;
+  if (!booted) {
+    const pendingBoot = bootPromise;
+    if (!pendingBoot) return;
+    try { await pendingBoot; }
+    catch { return; }
+    if (!booted) return;
+  }
+
   const scheduleId = alarm.name.slice(ALARM_PREFIX.length);
   const schedules = await listSchedules();
   const schedule = schedules.find((item) => item.id === scheduleId);
