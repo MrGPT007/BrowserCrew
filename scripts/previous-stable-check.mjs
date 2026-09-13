@@ -35,9 +35,21 @@ const targets = [
   "schedule-control-smoke.mjs"
 ];
 
-for (const file of ["scripts/previous-stable-runner.mjs", ".github/workflows/quality.yml", "docs/RELEASE-EVIDENCE-v0.2.md"]) await access(file);
+for (const file of ["scripts/previous-stable-runner.mjs", "scripts/schedule-control-worker-bootstrap.js", ".github/workflows/quality.yml", "docs/RELEASE-EVIDENCE-v0.2.md"]) await access(file);
 await execFileAsync(process.execPath, ["--check", "scripts/previous-stable-runner.mjs"]);
 await execFileAsync(process.execPath, ["--check", "scripts/schedule-control-smoke.mjs"]);
+await execFileAsync(process.execPath, ["--check", "scripts/schedule-control-worker-bootstrap.js"]);
+
+const scheduleControlBootstrap = await readFile("scripts/schedule-control-worker-bootstrap.js", "utf8");
+for (const phrase of [
+  'bootSchedulesRuntime',
+  'reviewMissedScheduleRun',
+  'runTask',
+  '__browsercrewScheduleControlBoot',
+  '__browsercrewScheduleControlStart',
+  '__browsercrewScheduleControlFinish'
+]) if (!scheduleControlBootstrap.includes(phrase)) throw new Error(`Schedule control worker bootstrap contract missing: ${phrase}`);
+if (scheduleControlBootstrap.includes("import(")) throw new Error("Service-worker schedule control bootstrap must use static module imports; dynamic import() is forbidden in ServiceWorkerGlobalScope.");
 
 const runner = await readFile("scripts/previous-stable-runner.mjs", "utf8");
 for (const phrase of [

@@ -22,6 +22,7 @@ const productionManifest = JSON.parse(await readFile(join(repoRoot, "manifest.js
 const productionServiceWorker = await readFile(join(repoRoot, "src", "service-worker.js"), "utf8");
 assert.equal((productionManifest.permissions || []).includes("alarms"), false, "The active v0.2 manifest must not gain alarms permission from this proof.");
 assert.equal(productionServiceWorker.includes("bootSchedulesRuntime"), false, "Production service-worker boot must remain disabled while v0.2 is active.");
+assert.equal(productionServiceWorker.includes("schedule-control-worker-bootstrap"), false, "Production service worker must never import the test-only scheduler bootstrap.");
 pass("Production remains alarm-free and does not boot scheduling");
 
 const fixture = await startFixtureServer();
@@ -112,22 +113,13 @@ try {
     [pauseSchedule.id]: taskPayload(pauseGoal, active.tab, provider.origin)
   };
 
-  const boot = await worker.evaluate(async ({ payloads }) => {
-    const schedules = await import(chrome.runtime.getURL("src/schedules-runtime.js"));
-    const background = await import(chrome.runtime.getURL("src/background.js"));
-    globalThis.__browsercrewScheduleControlRuntime = schedules;
-    globalThis.__browsercrewScheduleControlRuns = {};
-    await schedules.bootSchedulesRuntime({
-      dispatch: async (input) => {
-        if (input.mode === "preflight") return { grantsValid: true, providerAvailable: true, resourceFresh: true };
-        const payload = payloads[input.schedule?.id];
-        if (!payload) return { ok: false, error: { code: "TEST_PAYLOAD_MISSING" } };
-        return background.runTask(payload);
-      }
-    });
-    return { alarmsPermission: chrome.runtime.getManifest().permissions.includes("alarms"), booted: true };
-  }, { payloads });
+  const boot = await worker.evaluate((payloads) => {
+    const bootScheduler = globalThis.__browsercrewScheduleControlBoot;
+    if (typeof bootScheduler !== "function") throw new Error("Test-only scheduler bootstrap did not initialize.");
+    return bootScheduler(payloads);
+  }, payloads);
   assert.equal(boot.alarmsPermission, true, "Only the temporary smoke-test copy should receive alarms permission.");
+  assert.equal(boot.booted, true);
   pass("Test-only extension booted the real scheduler while production stayed locked");
 
   await startReviewedRun(worker, stopRun.id);
@@ -241,19 +233,18 @@ function missedReceipt(id, schedule, now) {
 
 async function startReviewedRun(worker, runId) {
   const started = await worker.evaluate((runId) => {
-    const runtime = globalThis.__browsercrewScheduleControlRuntime;
-    if (!runtime) throw new Error("Schedule control runtime was not retained after test boot.");
-    globalThis.__browsercrewScheduleControlRuns[runId] = runtime.reviewMissedScheduleRun(runId, "run_once");
-    return true;
+    const start = globalThis.__browsercrewScheduleControlStart;
+    if (typeof start !== "function") throw new Error("Schedule control start helper is unavailable.");
+    return start(runId);
   }, runId);
   assert.equal(started, true);
 }
 
 async function finishReviewedRun(worker, runId) {
-  return worker.evaluate(async (runId) => {
-    const promise = globalThis.__browsercrewScheduleControlRuns?.[runId];
-    if (!promise) throw new Error(`No scheduled test run promise exists for ${runId}.`);
-    return promise;
+  return worker.evaluate((runId) => {
+    const finish = globalThis.__browsercrewScheduleControlFinish;
+    if (typeof finish !== "function") throw new Error("Schedule control finish helper is unavailable.");
+    return finish(runId);
   }, runId);
 }
 
@@ -306,6 +297,11 @@ async function prepareTestExtension(target, origins) {
   manifest.permissions = [...new Set([...(manifest.permissions || []), "alarms"])];
   manifest.host_permissions = origins.map((origin) => `${origin}/*`);
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const serviceWorkerPath = join(target, "src", "service-worker.js");
+  const serviceWorker = await readFile(serviceWorkerPath, "utf8");
+  assert.equal(serviceWorker.includes("schedule-control-worker-bootstrap"), false, "Test bootstrap must not already exist in the production service worker.");
+  await writeFile(serviceWorkerPath, `${serviceWorker.trimEnd()}\nimport "../scripts/schedule-control-worker-bootstrap.js";\n`);
 }
 
 async function startFixtureServer() {
