@@ -99,6 +99,14 @@ jobs:
           name: skill-portable-evidence
           path: artifacts/skill-portable-smoke
           if-no-files-found: error
+      - name: Run post-v0.2 Skill Versions/Test/Run installed-extension smoke test
+        run: npm run skill-run-ui-smoke
+      - name: Upload Skill Versions/Test/Run evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: skill-run-ui-evidence
+          path: artifacts/skill-run-ui-smoke
+          if-no-files-found: error
       - name: Run post-v0.2 missed schedule review installed-extension smoke test
         run: npm run schedule-review-smoke
       - name: Upload missed schedule review evidence

@@ -23,7 +23,8 @@ const targets = [
   "watch-me-smoke.mjs",
   "skill-draft-review-smoke.mjs",
   "skill-library-lifecycle-smoke.mjs",
-  "skill-portable-smoke.mjs"
+  "skill-portable-smoke.mjs",
+  "skill-run-ui-smoke.mjs"
 ];
 
 for (const file of ["scripts/previous-stable-runner.mjs", ".github/workflows/quality.yml", "docs/RELEASE-EVIDENCE-v0.2.md"]) await access(file);
@@ -60,7 +61,9 @@ for (const phrase of [
   "npm run skill-library-lifecycle-smoke",
   "skill-library-lifecycle-evidence",
   "npm run skill-portable-smoke",
-  "skill-portable-evidence"
+  "skill-portable-evidence",
+  "npm run skill-run-ui-smoke",
+  "skill-run-ui-evidence"
 ]) if (!workflow.includes(phrase)) throw new Error(`Quality workflow previous-stable contract missing: ${phrase}`);
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
@@ -70,6 +73,7 @@ if (pkg.scripts?.["watch-me-smoke"] !== "node scripts/watch-me-smoke.mjs") throw
 if (pkg.scripts?.["skill-draft-review-smoke"] !== "node scripts/skill-draft-review-smoke.mjs") throw new Error("skill-draft-review-smoke must stay wired for current and previous-stable browser coverage.");
 if (pkg.scripts?.["skill-library-lifecycle-smoke"] !== "node scripts/skill-library-lifecycle-smoke.mjs") throw new Error("skill-library-lifecycle-smoke must stay wired for current and previous-stable browser coverage.");
 if (pkg.scripts?.["skill-portable-smoke"] !== "node scripts/skill-portable-smoke.mjs") throw new Error("skill-portable-smoke must stay wired for current and previous-stable browser coverage.");
+if (pkg.scripts?.["skill-run-ui-smoke"] !== "node scripts/skill-run-ui-smoke.mjs") throw new Error("skill-run-ui-smoke must stay wired for current and previous-stable browser coverage.");
 if (!String(pkg.scripts?.check || "").includes("previous-stable-check.mjs")) throw new Error("npm run check must include previous-stable contracts.");
 
 const evidence = await readFile("docs/RELEASE-EVIDENCE-v0.2.md", "utf8");
