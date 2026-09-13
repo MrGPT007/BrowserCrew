@@ -22,6 +22,7 @@ const SCHEDULES_PORT = "browsercrew-schedules";
 const MAX_SCHEDULES = 100;
 const MAX_RUN_RECEIPTS = 500;
 const ALARM_PREFIX = "browsercrew.schedule.";
+const occurrenceLocks = new Map();
 let booted = false;
 let bootPromise = null;
 let dispatchScheduledRun = null;
@@ -290,68 +291,81 @@ async function onAlarm(alarm) {
   }
 
   const scheduleId = alarm.name.slice(ALARM_PREFIX.length);
-  const schedules = await listSchedules();
-  const schedule = schedules.find((item) => item.id === scheduleId);
-  if (!schedule?.enabled) return;
-
   const firedAt = Date.now();
   const scheduledTime = Number.isFinite(alarm.scheduledTime) ? alarm.scheduledTime : firedAt;
   const scheduledFor = new Date(scheduledTime).toISOString();
-  const duplicate = (await listScheduleRuns(scheduleId)).find((run) => run.scheduledFor === scheduledFor);
-  if (duplicate) return;
+  return withOccurrenceLock(JSON.stringify([scheduleId, scheduledFor]), async () => {
+    const schedules = await listSchedules();
+    const schedule = schedules.find((item) => item.id === scheduleId);
+    if (!schedule?.enabled) return;
 
-  const missed = decideMissedRun(schedule, { scheduledTime, firedAt });
-  const receipt = {
-    id: crypto.randomUUID(),
-    schemaVersion: 1,
-    scheduleId,
-    skillRef: schedule.skillRef,
-    scheduledFor,
-    firedAt: new Date(firedAt).toISOString(),
-    latenessMs: missed.latenessMs,
-    missed: missed.missed,
-    missedAction: missed.missed ? missedActionName(schedule, missed.action) : null,
-    status: "checking",
-    reason: null,
-    taskId: null
-  };
-  await appendRunReceipt(receipt);
+    const duplicate = (await listScheduleRuns(scheduleId)).find((run) => run.scheduledFor === scheduledFor);
+    if (duplicate) return;
 
-  if (missed.action === "skip") {
-    await settleWithoutDispatch(receipt, "skipped", missed.reason);
-    await advanceSchedule(scheduleId, firedAt);
-    return;
-  }
-  if (missed.action === "review") {
-    receipt.reviewRequestedAt = new Date().toISOString();
-    await settleWithoutDispatch(receipt, "needs_review", missed.reason);
-    await advanceSchedule(scheduleId, firedAt);
-    return;
-  }
+    const missed = decideMissedRun(schedule, { scheduledTime, firedAt });
+    const receipt = {
+      id: crypto.randomUUID(),
+      schemaVersion: 1,
+      scheduleId,
+      skillRef: schedule.skillRef,
+      scheduledFor,
+      firedAt: new Date(firedAt).toISOString(),
+      latenessMs: missed.latenessMs,
+      missed: missed.missed,
+      missedAction: missed.missed ? missedActionName(schedule, missed.action) : null,
+      status: "checking",
+      reason: null,
+      taskId: null
+    };
+    await appendRunReceipt(receipt);
 
-  const priorRuns = await listScheduleRuns(scheduleId);
-  const activeRun = priorRuns.some((run) => run.id !== receipt.id && ["checking", "running"].includes(run.status));
-  const queuedRun = priorRuns.some((run) => run.id !== receipt.id && run.status === "queued");
-  const concurrency = decideScheduleConcurrency(schedule, { activeRun, queuedRun });
-  if (concurrency.action === "skip") {
-    await settleWithoutDispatch(receipt, "skipped", concurrency.reason);
-    await advanceSchedule(scheduleId, firedAt);
-    return;
-  }
-  if (concurrency.action === "queue") {
-    receipt.status = "queued";
-    receipt.reason = concurrency.reason;
-    receipt.queuedAt = new Date().toISOString();
-    await updateRunReceipt(receipt);
-    await advanceSchedule(scheduleId, firedAt);
-    return;
-  }
+    if (missed.action === "skip") {
+      await settleWithoutDispatch(receipt, "skipped", missed.reason);
+      await advanceSchedule(scheduleId, firedAt);
+      return;
+    }
+    if (missed.action === "review") {
+      receipt.reviewRequestedAt = new Date().toISOString();
+      await settleWithoutDispatch(receipt, "needs_review", missed.reason);
+      await advanceSchedule(scheduleId, firedAt);
+      return;
+    }
 
+    const priorRuns = await listScheduleRuns(scheduleId);
+    const activeRun = priorRuns.some((run) => run.id !== receipt.id && ["checking", "running"].includes(run.status));
+    const queuedRun = priorRuns.some((run) => run.id !== receipt.id && run.status === "queued");
+    const concurrency = decideScheduleConcurrency(schedule, { activeRun, queuedRun });
+    if (concurrency.action === "skip") {
+      await settleWithoutDispatch(receipt, "skipped", concurrency.reason);
+      await advanceSchedule(scheduleId, firedAt);
+      return;
+    }
+    if (concurrency.action === "queue") {
+      receipt.status = "queued";
+      receipt.reason = concurrency.reason;
+      receipt.queuedAt = new Date().toISOString();
+      await updateRunReceipt(receipt);
+      await advanceSchedule(scheduleId, firedAt);
+      return;
+    }
+
+    try {
+      await dispatchReceipt(schedule, receipt);
+    } finally {
+      await advanceSchedule(scheduleId, firedAt);
+      await drainQueuedRun(scheduleId);
+    }
+  });
+}
+
+async function withOccurrenceLock(key, work) {
+  const previous = occurrenceLocks.get(key) || Promise.resolve();
+  const current = previous.catch(() => {}).then(work);
+  occurrenceLocks.set(key, current);
   try {
-    await dispatchReceipt(schedule, receipt);
+    return await current;
   } finally {
-    await advanceSchedule(scheduleId, firedAt);
-    await drainQueuedRun(scheduleId);
+    if (occurrenceLocks.get(key) === current) occurrenceLocks.delete(key);
   }
 }
 
