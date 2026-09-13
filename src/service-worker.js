@@ -11,4 +11,8 @@ import "./compare-read.js";
 import "./directory-extract.js";
 import "./record-write.js";
 import "./invoice-download.js";
+import "./skills-runtime.js";
+import "./watch-me-runtime.js";
+import "./schedules-runtime.js";
+import "./schedule-controls-runtime.js";
 import "./background.js";

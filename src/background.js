@@ -114,7 +114,7 @@ async function testProvider(settings, suppliedSecret) {
   return { ok: true, latencyMs: Date.now() - startedAt, model: response.model || normalized.model, message: "Connection works. BrowserCrew can reach this AI model." };
 }
 
-async function runTask(payload) {
+export async function runTask(payload) {
   validateRunPayload(payload);
   const task = {
     id: crypto.randomUUID(), schemaVersion: 1,

@@ -67,6 +67,110 @@ jobs:
           name: store-media-evidence
           path: artifacts/store-media
           if-no-files-found: error
+      - name: Run post-v0.2 Watch Me installed-extension smoke test
+        run: npm run watch-me-smoke
+      - name: Upload Watch Me evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch-me-evidence
+          path: artifacts/watch-me-smoke
+          if-no-files-found: error
+      - name: Run post-v0.2 Watch Me recorder resilience installed-extension smoke test
+        run: npm run watch-me-resilience-smoke
+      - name: Upload Watch Me recorder resilience evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch-me-resilience-evidence
+          path: artifacts/watch-me-resilience-smoke
+          if-no-files-found: error
+      - name: Run post-v0.2 Watch Me explicit site-scope review installed-extension smoke test
+        run: npm run watch-me-scope-review-smoke
+      - name: Upload Watch Me explicit site-scope review evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch-me-scope-review-evidence
+          path: artifacts/watch-me-scope-review-smoke
+          if-no-files-found: error
+      - name: Run post-v0.2 Skill draft review installed-extension smoke test
+        run: npm run skill-draft-review-smoke
+      - name: Upload Skill draft review evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: skill-draft-review-evidence
+          path: artifacts/skill-draft-review-smoke
+          if-no-files-found: error
+      - name: Run post-v0.2 Skill library lifecycle installed-extension smoke test
+        run: npm run skill-library-lifecycle-smoke
+      - name: Upload Skill library lifecycle evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: skill-library-lifecycle-evidence
+          path: artifacts/skill-library-lifecycle-smoke
+          if-no-files-found: error
+      - name: Run post-v0.2 safe Skill import/export installed-extension smoke test
+        run: npm run skill-portable-smoke
+      - name: Upload safe Skill import/export evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: skill-portable-evidence
+          path: artifacts/skill-portable-smoke
+          if-no-files-found: error
+      - name: Run post-v0.2 Skill Versions/Test/Run installed-extension smoke test
+        run: npm run skill-run-ui-smoke
+      - name: Upload Skill Versions/Test/Run evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: skill-run-ui-evidence
+          path: artifacts/skill-run-ui-smoke
+          if-no-files-found: error
+      - name: Run post-v0.2 missed schedule review installed-extension smoke test
+        run: npm run schedule-review-smoke
+      - name: Upload missed schedule review evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-review-evidence
+          path: artifacts/schedule-review-smoke
+          if-no-files-found: error
+      - name: Run post-v0.2 prepared schedule setup installed-extension smoke test
+        run: npm run schedule-setup-smoke
+      - name: Upload prepared schedule setup evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-setup-evidence
+          path: artifacts/schedule-setup-smoke
+          if-no-files-found: error
+      - name: Run post-v0.2 schedule provider/resource resolver installed-extension smoke test
+        run: npm run schedule-resolvers-smoke
+      - name: Upload schedule provider/resource resolver evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-resolvers-evidence
+          path: artifacts/schedule-resolvers-smoke
+          if-no-files-found: error
+      - name: Run post-v0.2 production schedule dispatch composition installed-extension smoke test
+        run: npm run schedule-dispatch-runtime-smoke
+      - name: Upload production schedule dispatch composition evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-dispatch-runtime-evidence
+          path: artifacts/schedule-dispatch-runtime-smoke
+          if-no-files-found: error
+      - name: Run post-v0.2 scheduled task Stop/Pause installed-extension smoke test
+        run: npm run schedule-control-smoke
+      - name: Upload scheduled task Stop/Pause evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-control-evidence
+          path: artifacts/schedule-control-smoke
+          if-no-files-found: error
+      - name: Run post-v0.2 schedule lifecycle controls installed-extension smoke test
+        run: npm run schedule-lifecycle-smoke
+      - name: Upload schedule lifecycle controls evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-lifecycle-evidence
+          path: artifacts/schedule-lifecycle-smoke
+          if-no-files-found: error
       - name: Run v0.1 installed-extension smoke test
         run: npm run browser-smoke
       - name: Run V02-B01 W1/W3 adversarial installed-extension smoke test
