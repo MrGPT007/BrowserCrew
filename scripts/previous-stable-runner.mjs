@@ -40,7 +40,8 @@ const targets = [
   "skill-completion-check-smoke.mjs",
   "skill-replay-resilience-smoke.mjs",
   "schedule-review-smoke.mjs",
-  "schedule-setup-smoke.mjs"
+  "schedule-setup-smoke.mjs",
+  "schedule-control-smoke.mjs"
 ];
 const report = {
   kind: "browsercrew.previous_stable_chrome_receipt",

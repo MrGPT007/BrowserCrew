@@ -29,11 +29,15 @@ const targets = [
   "skill-portable-smoke.mjs",
   "skill-run-ui-smoke.mjs",
   "skill-completion-check-smoke.mjs",
-  "skill-replay-resilience-smoke.mjs"
+  "skill-replay-resilience-smoke.mjs",
+  "schedule-review-smoke.mjs",
+  "schedule-setup-smoke.mjs",
+  "schedule-control-smoke.mjs"
 ];
 
 for (const file of ["scripts/previous-stable-runner.mjs", ".github/workflows/quality.yml", "docs/RELEASE-EVIDENCE-v0.2.md"]) await access(file);
 await execFileAsync(process.execPath, ["--check", "scripts/previous-stable-runner.mjs"]);
+await execFileAsync(process.execPath, ["--check", "scripts/schedule-control-smoke.mjs"]);
 
 const runner = await readFile("scripts/previous-stable-runner.mjs", "utf8");
 for (const phrase of [
@@ -70,7 +74,13 @@ for (const phrase of [
   "npm run skill-portable-smoke",
   "skill-portable-evidence",
   "npm run skill-run-ui-smoke",
-  "skill-run-ui-evidence"
+  "skill-run-ui-evidence",
+  "npm run schedule-review-smoke",
+  "schedule-review-evidence",
+  "npm run schedule-setup-smoke",
+  "schedule-setup-evidence",
+  "npm run schedule-control-smoke",
+  "schedule-control-evidence"
 ]) if (!workflow.includes(phrase)) throw new Error(`Quality workflow previous-stable contract missing: ${phrase}`);
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
@@ -89,6 +99,9 @@ const runUiSmoke = String(pkg.scripts?.["skill-run-ui-smoke"] || "");
 if (!runUiSmoke.includes("node scripts/skill-run-ui-smoke.mjs") || !runUiSmoke.includes("node scripts/skill-completion-check-smoke.mjs") || !runUiSmoke.includes("node scripts/skill-replay-resilience-smoke.mjs")) throw new Error("skill-run-ui-smoke must keep approved/draft Test/Run, bounded completion-check, and replay-restart coverage together on current Chrome.");
 if (pkg.scripts?.["skill-completion-check-smoke"] !== "node scripts/skill-completion-check-smoke.mjs") throw new Error("skill-completion-check-smoke must stay directly runnable for Chrome 152 coverage.");
 if (pkg.scripts?.["skill-replay-resilience-smoke"] !== "node scripts/skill-replay-resilience-smoke.mjs") throw new Error("skill-replay-resilience-smoke must stay directly runnable for Chrome 152 coverage.");
+if (pkg.scripts?.["schedule-review-smoke"] !== "node scripts/schedule-review-smoke.mjs") throw new Error("schedule-review-smoke must stay directly runnable for current and Chrome 152 coverage.");
+if (pkg.scripts?.["schedule-setup-smoke"] !== "node scripts/schedule-setup-smoke.mjs") throw new Error("schedule-setup-smoke must stay directly runnable for current and Chrome 152 coverage.");
+if (pkg.scripts?.["schedule-control-smoke"] !== "node scripts/schedule-control-smoke.mjs") throw new Error("schedule-control-smoke must stay directly runnable for current and Chrome 152 coverage.");
 if (!String(pkg.scripts?.check || "").includes("previous-stable-check.mjs")) throw new Error("npm run check must include previous-stable contracts.");
 
 const evidence = await readFile("docs/RELEASE-EVIDENCE-v0.2.md", "utf8");

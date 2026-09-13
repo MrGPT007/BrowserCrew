@@ -94,6 +94,8 @@ const schedules = [
   schedule("revoked-grant"),
   schedule("stale-resource"),
   schedule("provider-down"),
+  schedule("task-paused"),
+  schedule("task-cancelled"),
   schedule("paused-job", { enabled: false, nextRunAt: null }),
   schedule("one-time-job", { recurrence: { kind: "once", when: now + 60 * 60_000 } })
 ];
@@ -116,7 +118,14 @@ await runtime.bootSchedulesRuntime({
       return { grantsValid: true, providerAvailable: true, resourceFresh: true };
     }
     taskCalls.push(clone(input));
-    return { ok: true, taskId: `task-${input.schedule.id}-${taskCalls.length}` };
+    const taskId = `task-${input.schedule.id}-${taskCalls.length}`;
+    if (input.schedule.id === "task-paused") {
+      return { ok: false, task: { id: taskId, status: "paused", error: { code: "TASK_PAUSED" } }, error: { code: "TASK_PAUSED" } };
+    }
+    if (input.schedule.id === "task-cancelled") {
+      return { ok: false, task: { id: taskId, status: "cancelled", error: { code: "TASK_CANCELLED" } }, error: { code: "TASK_CANCELLED" } };
+    }
+    return { ok: true, taskId };
   }
 });
 
@@ -187,6 +196,20 @@ assert.equal(providerRuns[0].status, "blocked");
 assert.equal(providerRuns[0].reason, "SCHEDULE_PROVIDER_UNAVAILABLE");
 assert.equal(countTasksFor("provider-down"), 0, "Unavailable configured provider must block before task dispatch.");
 
+await consumeAndFire("task-paused", Date.now());
+const pausedTaskRuns = await runsFor("task-paused");
+assert.equal(pausedTaskRuns.length, 1);
+assert.equal(pausedTaskRuns[0].status, "paused", "A normal BrowserCrew task paused by the user must stay paused in schedule history.");
+assert.equal(pausedTaskRuns[0].reason, "TASK_PAUSED");
+assert.match(pausedTaskRuns[0].taskId, /^task-task-paused-/);
+
+await consumeAndFire("task-cancelled", Date.now());
+const cancelledTaskRuns = await runsFor("task-cancelled");
+assert.equal(cancelledTaskRuns.length, 1);
+assert.equal(cancelledTaskRuns[0].status, "cancelled", "A normal BrowserCrew task stopped by the user must stay cancelled in schedule history.");
+assert.equal(cancelledTaskRuns[0].reason, "TASK_CANCELLED");
+assert.match(cancelledTaskRuns[0].taskId, /^task-task-cancelled-/);
+
 const oneTimeScheduledTime = Date.now();
 await consumeAndFire("one-time-job", oneTimeScheduledTime);
 const oneRuns = await runsFor("one-time-job");
@@ -200,21 +223,31 @@ assert.equal(oneTime.nextRunAt, null, "Consumed one-time schedule must not adver
 assert.equal(alarms.has("browsercrew.schedule.one-time-job"), false, "Consumed one-time schedule must have no future alarm.");
 
 const actualTasks = taskCalls.map((call) => call.schedule.id);
-assert.deepEqual(actualTasks.sort(), ["one-time-job", "success-daily"].sort(), "Only fully preflighted schedules may reach task dispatch.");
+assert.deepEqual(actualTasks.sort(), ["one-time-job", "success-daily", "task-paused", "task-cancelled"].sort(), "Only fully preflighted schedules may reach task dispatch.");
 assert.ok(dispatchCalls.some((call) => call.mode === "preflight" && call.schedule.id === "revoked-grant"));
 assert.ok(dispatchCalls.some((call) => call.mode === "preflight" && call.schedule.id === "stale-resource"));
 assert.ok(dispatchCalls.some((call) => call.mode === "preflight" && call.schedule.id === "provider-down"));
 assert.ok(alarmClears.includes("browsercrew.schedule.orphan"));
 assert.ok(alarmCreates.length >= enabledCount, "Scheduler reconciliation must recreate persisted enabled alarms.");
 
-const runtimeSource = await (await import("node:fs/promises")).readFile(new URL("../src/schedules-runtime.js", import.meta.url), "utf8");
+const fs = await import("node:fs/promises");
+const runtimeSource = await fs.readFile(new URL("../src/schedules-runtime.js", import.meta.url), "utf8");
 for (const phrase of [
   "const scheduledFor = new Date(scheduledTime).toISOString()",
   "run.scheduledFor === scheduledFor",
-  "if (duplicate) return"
-]) assert.ok(runtimeSource.includes(phrase), `Persistent occurrence dedupe contract missing: ${phrase}`);
+  "if (duplicate) return",
+  'status: "paused", reason: "TASK_PAUSED"',
+  'status: "cancelled", reason: "TASK_CANCELLED"'
+]) assert.ok(runtimeSource.includes(phrase), `Persistent scheduler contract missing: ${phrase}`);
 
-console.log("BrowserCrew schedule runtime restart, dedupe, preflight, and receipt lifecycle checks passed.");
+const manifest = JSON.parse(await fs.readFile(new URL("../manifest.json", import.meta.url), "utf8"));
+assert.equal((manifest.permissions || []).includes("alarms"), false, "The active v0.2 manifest must remain free of alarms permission.");
+const serviceWorkerSource = await fs.readFile(new URL("../src/service-worker.js", import.meta.url), "utf8");
+assert.equal(serviceWorkerSource.includes("bootSchedulesRuntime"), false, "Production service-worker boot must remain disabled until the post-v0.2 scheduling release.");
+const backgroundSource = await fs.readFile(new URL("../src/background.js", import.meta.url), "utf8");
+assert.ok(backgroundSource.includes("export async function runTask(payload)"), "The normal BrowserCrew task engine must expose an explicit dispatcher entry for bounded scheduler handoff testing and future activation.");
+
+console.log("BrowserCrew schedule runtime restart, dedupe, preflight, task-control outcome, and receipt lifecycle checks passed.");
 
 async function consumeAndFire(scheduleId, scheduledTime) {
   const name = `browsercrew.schedule.${scheduleId}`;

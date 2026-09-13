@@ -71,6 +71,7 @@
     "skill-replay-resilience-smoke": "node scripts/skill-replay-resilience-smoke.mjs",
     "schedule-review-smoke": "node scripts/schedule-review-smoke.mjs",
     "schedule-setup-smoke": "node scripts/schedule-setup-smoke.mjs",
+    "schedule-control-smoke": "node scripts/schedule-control-smoke.mjs",
     "previous-stable-smoke": "node scripts/previous-stable-runner.mjs",
     "release-matrix-smoke": "node scripts/release-matrix-smoke.mjs",
     "provider-certify": "node scripts/provider-certify.mjs",

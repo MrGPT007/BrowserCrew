@@ -280,9 +280,10 @@ async function dispatchReceipt(schedule, receipt) {
       scheduledFor: receipt.scheduledFor,
       scheduleRunId: receipt.id
     });
-    receipt.status = result?.ok ? "completed" : "failed";
+    const outcome = scheduledTaskOutcome(result);
+    receipt.status = outcome.status;
     receipt.taskId = result?.taskId || result?.task?.id || null;
-    receipt.reason = result?.ok ? null : result?.error?.code || "TASK_FAILED";
+    receipt.reason = outcome.reason;
     receipt.completedAt = new Date().toISOString();
     await updateRunReceipt(receipt);
   } catch (error) {
@@ -371,6 +372,15 @@ function missedActionName(schedule, action) {
   if (action === "review") return "ask";
   if (action === "skip") return "skip";
   return schedule.missedRunPolicy === "run_once_when_available" ? "run_once_when_available" : "run";
+}
+
+function scheduledTaskOutcome(result) {
+  const taskStatus = result?.task?.status || null;
+  const code = result?.error?.code || result?.task?.error?.code || null;
+  if (result?.ok === true) return { status: "completed", reason: null };
+  if (taskStatus === "paused" || code === "TASK_PAUSED") return { status: "paused", reason: "TASK_PAUSED" };
+  if (taskStatus === "cancelled" || code === "TASK_CANCELLED") return { status: "cancelled", reason: "TASK_CANCELLED" };
+  return { status: "failed", reason: code || "TASK_FAILED" };
 }
 
 async function appendRunReceipt(receipt) {
