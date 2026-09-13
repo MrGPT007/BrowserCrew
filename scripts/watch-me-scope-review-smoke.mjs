@@ -138,13 +138,13 @@ try {
   await target.bringToFront();
   await panel.evaluate(() => document.querySelector("#watchMeStartButton")?.click());
   await waitForText(panel.locator("#watchMeBadge"), "Watching");
-  await panel.locator("#watchMeWaitControl").waitFor({ state: "visible", timeout: timeoutMs });
-  pass("Watch Me exposes an explicit observable wait control only while recording is active");
+  await panel.locator("#watchMeWaitControls").waitFor({ state: "visible", timeout: timeoutMs });
+  pass("Watch Me exposes one explicit observable wait control only while recording is active");
 
   await target.locator("#prepare").click();
   await target.locator("#waitReady").waitFor({ state: "visible", timeout: timeoutMs });
   await panel.locator("#watchMeWaitText").fill("Export ready");
-  await panel.locator("#watchMeRememberWaitButton").click();
+  await panel.locator("#watchMeMarkWaitButton").click();
   await waitUntil(async () => (await readWatchState(worker)).session.events.some((event) => event.kind === "waitFor" && event.expect?.visibleText === "Export ready"), "Remember this wait should persist a semantic waitFor step only after the text is actually visible.");
   const waitState = await readWatchState(worker);
   const waitEvent = waitState.session.events.find((event) => event.kind === "waitFor" && event.expect?.visibleText === "Export ready");

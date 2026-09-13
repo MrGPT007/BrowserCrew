@@ -6,14 +6,17 @@ let waitMountObserver = null;
 function mountWaitControl() {
   const running = document.querySelector("#watchMeRunning");
   if (!running) return false;
-  if (running.querySelector("#watchMeWaitControl")) {
+
+  const existing = running.querySelector("#watchMeWaitControls");
+  if (existing) {
+    enhanceCanonicalWaitControl(existing);
     startWaitStateSync();
     return true;
   }
 
-  const box = document.createElement("div");
-  box.className = "selection-summary";
-  box.id = "watchMeWaitControl";
+  const section = document.createElement("div");
+  section.id = "watchMeWaitControls";
+  section.className = "selection-summary";
 
   const label = document.createElement("label");
   label.className = "field-label";
@@ -25,33 +28,48 @@ function mountWaitControl() {
   input.maxLength = 160;
   input.autocomplete = "off";
   input.placeholder = "Example: Export ready";
-  label.append(input);
-
   const helper = document.createElement("p");
   helper.className = "helper";
+  helper.dataset.watchWaitHelp = "true";
   helper.textContent = "When this public status or heading is visible, choose Remember this wait. BrowserCrew will wait for the same visible text during replay. Do not enter a name, email, account number, password, token, or other private value.";
-
   const button = document.createElement("button");
-  button.id = "watchMeRememberWaitButton";
-  button.className = "button button-small tactile";
+  button.id = "watchMeMarkWaitButton";
+  button.className = "button tactile";
   button.type = "button";
   button.textContent = "Remember this wait";
+  button.dataset.watchWaitEnhanced = "true";
   button.addEventListener("click", rememberWait);
+  section.append(label, input, helper, button);
 
-  box.append(label, helper, button);
+  const completionLabel = running.querySelector('label[for="watchMeCompletionText"]');
   const completionInput = running.querySelector("#watchMeCompletionText");
-  if (completionInput) completionInput.before(box);
-  else running.prepend(box);
+  (completionLabel || completionInput || running.firstChild)?.before?.(section);
+  if (!section.isConnected) running.prepend(section);
 
   startWaitStateSync();
   syncWaitState();
   return true;
 }
 
+function enhanceCanonicalWaitControl(section) {
+  const label = section.querySelector('label[for="watchMeWaitText"]');
+  const helper = section.querySelector(".helper");
+  const button = section.querySelector("#watchMeMarkWaitButton");
+  if (label) label.textContent = "Wait for visible text";
+  if (helper) {
+    helper.dataset.watchWaitHelp = "true";
+    helper.textContent = "When this public status or heading is visible, choose Remember this wait. BrowserCrew will wait for the same visible text during replay. Do not enter a name, email, account number, password, token, or other private value.";
+  }
+  if (button) {
+    button.textContent = "Remember this wait";
+    button.dataset.watchWaitEnhanced = "true";
+  }
+}
+
 function startWaitStateSync() {
   if (waitStateTimer) return;
   waitStateTimer = setInterval(() => {
-    if (!document.querySelector("#watchMeWaitControl")) mountWaitControl();
+    if (!document.querySelector("#watchMeWaitControls")) mountWaitControl();
     syncWaitState();
   }, 500);
 }
@@ -82,7 +100,7 @@ window.addEventListener("unload", () => {
 }, { once: true });
 
 function syncWaitState() {
-  const button = document.querySelector("#watchMeRememberWaitButton");
+  const button = document.querySelector("#watchMeMarkWaitButton");
   const input = document.querySelector("#watchMeWaitText");
   const watching = document.querySelector("#watchMeBadge")?.textContent === "Watching";
   if (button) button.disabled = waitBusy || !watching;
@@ -90,10 +108,11 @@ function syncWaitState() {
 }
 
 async function rememberWait() {
-  const button = document.querySelector("#watchMeRememberWaitButton");
-  const input = document.querySelector("#watchMeWaitText");
-  const visibleText = String(input?.value || "").replace(/\s+/g, " ").trim();
-  if (!button || !input || waitBusy) return;
+  const section = document.querySelector("#watchMeWaitControls");
+  const button = section?.querySelector("#watchMeMarkWaitButton");
+  const input = section?.querySelector("#watchMeWaitText");
+  if (!button || !input || button.dataset.watchWaitEnhanced !== "true" || waitBusy) return;
+  const visibleText = String(input.value || "").replace(/\s+/g, " ").trim();
   if (!visibleText) return announce("Enter a short public status or heading that is visible on the page now.");
 
   waitBusy = true;

@@ -8,6 +8,7 @@ for (const file of [
   "src/watch-me-runtime.js",
   "src/watch-me-scope-review-ui.js",
   "src/watch-me-wait-ui.js",
+  "src/watch-me-resilience-ui.js",
   "src/skills-runner.js",
   "src/sidepanel.js",
   "scripts/watch-me-scope-review-smoke.mjs"
@@ -54,9 +55,11 @@ const waitUi = await readFile("src/watch-me-wait-ui.js", "utf8");
 for (const phrase of [
   'function mountWaitControl()',
   'const running = document.querySelector("#watchMeRunning")',
-  'running.querySelector("#watchMeWaitControl")',
-  'const completionInput = running.querySelector("#watchMeCompletionText")',
-  'completionInput.before(box)',
+  'running.querySelector("#watchMeWaitControls")',
+  'enhanceCanonicalWaitControl(existing)',
+  'section.id = "watchMeWaitControls"',
+  'input.id = "watchMeWaitText"',
+  'button.id = "watchMeMarkWaitButton"',
   'new MutationObserver',
   'document.readyState === "loading"',
   'Wait for visible text',
@@ -65,13 +68,19 @@ for (const phrase of [
   'type: "markWait", visibleText',
   'BrowserCrew will require that visible text during replay'
 ]) assert.ok(waitUi.includes(phrase), `Watch Me wait UI contract missing: ${phrase}`);
-assert.equal(waitUi.includes("completionInput.parentElement.before(box)"), false, "Wait UI must stay owned by the active Watch Me running container instead of mounting beside it.");
+assert.equal(waitUi.includes("watchMeRememberWaitButton"), false, "Watch Me must expose one canonical wait button instead of a second competing control.");
+assert.equal(waitUi.includes("watchMeWaitControl\""), false, "Watch Me must reuse the canonical resilience wait container instead of adding a duplicate container.");
 assert.equal(waitUi.includes("chrome.permissions.request"), false, "Remembering a wait must not request or widen site permission.");
 assert.equal(waitUi.includes("setTimeout(() => port.postMessage"), false, "Remembering a wait must not simulate timing instead of recording an observable condition.");
 
+const resilienceUi = await readFile("src/watch-me-resilience-ui.js", "utf8");
+for (const phrase of ['section.id = "watchMeWaitControls"', 'id="watchMeWaitText"', 'id="watchMeMarkWaitButton"']) {
+  assert.ok(resilienceUi.includes(phrase), `Existing Watch Me resilience UI must share canonical wait control identity: ${phrase}`);
+}
+
 const sidepanel = await readFile("src/sidepanel.js", "utf8");
 assert.ok(sidepanel.includes('import "./watch-me-scope-review-ui.js";'), "Side panel must load explicit Watch Me scope review UI.");
-assert.ok(sidepanel.includes('import "./watch-me-wait-ui.js";'), "Side panel must load explicit Watch Me wait UI.");
+assert.ok(sidepanel.includes('import "./watch-me-wait-ui.js";'), "Side panel must load the observable wait enhancer.");
 
 const runner = await readFile("src/skills-runner.js", "utf8");
 assert.ok(runner.includes('assertTabInScope(tab, skill.allowedOrigins, step.kind === "navigate" ? null : step.origin);'), "Only explicit navigate steps may move between reviewed origins.");
@@ -89,12 +98,13 @@ for (const phrase of [
   'kind === "navigate" && event.origin === fixtureB.origin',
   'runSkill(panel',
   'Cross-site replay produces a durable exact-version completed run receipt',
-  '#watchMeWaitControl',
-  '#watchMeRememberWaitButton',
+  '#watchMeWaitControls',
+  '#watchMeMarkWaitButton',
   'kind === "waitFor" && event.expect?.visibleText === "Export ready"',
   'data-preview-before-ready',
   'Wait workflow replay completed its recorded wait before Preview'
 ]) assert.ok(smoke.includes(phrase), `Watch Me scope/wait browser proof missing: ${phrase}`);
+assert.equal(smoke.includes("#watchMeRememberWaitButton"), false, "Scope/wait proof must exercise the same canonical wait button as resilience coverage.");
 assert.equal(smoke.includes("localhost"), false, "Scope-review browser proof must use deterministic loopback servers rather than localhost DNS resolution.");
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
