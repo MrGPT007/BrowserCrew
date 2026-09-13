@@ -253,23 +253,12 @@ export async function reviewMissedScheduleRun(runId, decision) {
   if (!runId) throw coded("SCHEDULE_RUN_ID_REQUIRED", "Choose the missed scheduled job you want to review.");
   if (!["run_once", "skip"].includes(decision)) throw coded("SCHEDULE_REVIEW_DECISION_INVALID", "Choose whether to run this missed job once or skip it.");
 
-  const runs = await listScheduleRuns();
-  const receipt = runs.find((run) => run.id === runId);
-  if (!receipt) throw coded("SCHEDULE_RUN_NOT_FOUND", "That scheduled job receipt could not be found.");
-  if (receipt.status !== "needs_review") throw coded("SCHEDULE_REVIEW_NOT_PENDING", "That scheduled job is no longer waiting for review.");
+  const dispatchAvailable = typeof dispatchScheduledRun === "function";
+  const { receipt, runs } = await claimMissedScheduleReview(runId, decision, { dispatchAvailable });
 
-  receipt.reviewDecision = decision;
-  receipt.reviewedAt = new Date().toISOString();
+  if (decision === "skip") return { ok: true, run: receipt };
 
-  if (decision === "skip") {
-    await settleWithoutDispatch(receipt, "skipped", "SCHEDULE_MISSED_USER_SKIPPED");
-    return { ok: true, run: receipt };
-  }
-
-  if (typeof dispatchScheduledRun !== "function") {
-    receipt.status = "needs_review";
-    receipt.reason = "SCHEDULE_DISPATCH_REQUIRED";
-    await updateRunReceipt(receipt);
+  if (!dispatchAvailable) {
     throw withRun(coded("SCHEDULE_DISPATCH_REQUIRED", "Scheduled jobs are not enabled in this BrowserCrew build yet."), receipt);
   }
 
@@ -294,10 +283,6 @@ export async function reviewMissedScheduleRun(runId, decision) {
     await updateRunReceipt(receipt);
     return { ok: true, run: receipt, queued: true };
   }
-
-  receipt.status = "checking";
-  receipt.reason = null;
-  await updateRunReceipt(receipt);
 
   const acceptedSchedule = schedule.recurrence.kind === "once" ? { ...schedule, enabled: true } : schedule;
   await dispatchReceipt(acceptedSchedule, receipt);
@@ -539,6 +524,34 @@ function scheduledTaskOutcome(result) {
   if (taskStatus === "paused" || code === "TASK_PAUSED") return { status: "paused", reason: "TASK_PAUSED" };
   if (taskStatus === "cancelled" || code === "TASK_CANCELLED") return { status: "cancelled", reason: "TASK_CANCELLED" };
   return { status: "failed", reason: code || "TASK_FAILED" };
+}
+
+async function claimMissedScheduleReview(runId, decision, { dispatchAvailable }) {
+  return withScheduleRunHistoryMutation(async () => {
+    const runs = await listScheduleRuns();
+    const index = runs.findIndex((run) => run.id === runId);
+    if (index < 0) throw coded("SCHEDULE_RUN_NOT_FOUND", "That scheduled job receipt could not be found.");
+    if (runs[index].status !== "needs_review") throw coded("SCHEDULE_REVIEW_NOT_PENDING", "That scheduled job is no longer waiting for review.");
+
+    const receipt = structuredClone(runs[index]);
+    receipt.reviewDecision = decision;
+    receipt.reviewedAt = new Date().toISOString();
+    if (decision === "skip") {
+      receipt.status = "skipped";
+      receipt.reason = "SCHEDULE_MISSED_USER_SKIPPED";
+      receipt.completedAt = new Date().toISOString();
+    } else if (!dispatchAvailable) {
+      receipt.status = "needs_review";
+      receipt.reason = "SCHEDULE_DISPATCH_REQUIRED";
+    } else {
+      receipt.status = "checking";
+      receipt.reason = null;
+    }
+
+    runs[index] = structuredClone(receipt);
+    await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.slice(0, MAX_RUN_RECEIPTS) });
+    return { receipt, runs };
+  });
 }
 
 async function appendRunReceipt(receipt) {

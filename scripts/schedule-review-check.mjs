@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 const storage = new Map();
 const listeners = { connect: [], alarm: [], startup: [], installed: [] };
 const alarms = new Map();
+let holdNextRunWrite = false;
+let heldRunWriteEnteredResolve = null;
+let heldRunWriteRelease = null;
 const alarmsApi = {
   onAlarm: { addListener(listener) { listeners.alarm.push(listener); } },
   async create(name, spec) { alarms.set(name, { name, scheduledTime: spec.when || Date.now(), ...spec }); },
@@ -10,6 +13,24 @@ const alarmsApi = {
   async get(name) { return alarms.get(name) || null; },
   async getAll() { return [...alarms.values()]; }
 };
+
+function armRunWriteBarrier() {
+  holdNextRunWrite = true;
+  let releaseResolve;
+  const entered = new Promise((resolve) => { heldRunWriteEnteredResolve = resolve; });
+  heldRunWriteRelease = new Promise((resolve) => { releaseResolve = resolve; });
+  return {
+    entered,
+    release() {
+      releaseResolve();
+    }
+  };
+}
+
+async function settleTurn() {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+}
 
 globalThis.chrome = {
   runtime: {
@@ -25,6 +46,12 @@ globalThis.chrome = {
         return Object.fromEntries(wanted.filter((key) => storage.has(key)).map((key) => [key, structuredClone(storage.get(key))]));
       },
       async set(values) {
+        if (holdNextRunWrite && Object.prototype.hasOwnProperty.call(values, "browsercrew.scheduleRuns.v1")) {
+          holdNextRunWrite = false;
+          heldRunWriteEnteredResolve?.();
+          await heldRunWriteRelease;
+          heldRunWriteRelease = null;
+        }
         for (const [key, value] of Object.entries(values)) storage.set(key, structuredClone(value));
       },
       async remove(keys) {
@@ -201,6 +228,29 @@ await assert.rejects(
   runtime.reviewMissedScheduleRun("run-me", "run_once"),
   (error) => error?.code === "SCHEDULE_REVIEW_NOT_PENDING"
 );
+
+// Two simultaneous reviewers must never both claim and dispatch the same pending receipt.
+storage.set(SCHEDULE_RUNS_KEY, [missed("race-me"), ...structuredClone(storage.get(SCHEDULE_RUNS_KEY) || [])]);
+dispatchCalls.length = 0;
+const barrier = armRunWriteBarrier();
+const firstReview = runtime.reviewMissedScheduleRun("race-me", "run_once");
+await barrier.entered;
+const secondReview = runtime.reviewMissedScheduleRun("race-me", "run_once");
+await settleTurn();
+barrier.release();
+const simultaneous = await Promise.allSettled([firstReview, secondReview]);
+const taskDispatches = dispatchCalls.filter((call) => call.mode !== "preflight");
+assert.equal(
+  taskDispatches.length,
+  1,
+  "Two simultaneous reviewers of one needs_review receipt must produce exactly one task dispatch."
+);
+assert.equal(simultaneous.filter((result) => result.status === "fulfilled").length, 1, "Exactly one simultaneous reviewer may claim the pending receipt.");
+const rejectedReview = simultaneous.find((result) => result.status === "rejected");
+assert.equal(rejectedReview?.reason?.code, "SCHEDULE_REVIEW_NOT_PENDING", "The losing simultaneous reviewer must fail closed after the durable claim changes receipt state.");
+runs = (await chrome.storage.local.get(SCHEDULE_RUNS_KEY))[SCHEDULE_RUNS_KEY];
+assert.equal(runs.find((run) => run.id === "race-me")?.status, "completed", "The single claimed review must still reach a durable completed receipt.");
+
 await assert.rejects(
   runtime.reviewMissedScheduleRun("skip-me", "anything"),
   (error) => error?.code === "SCHEDULE_REVIEW_DECISION_INVALID"
