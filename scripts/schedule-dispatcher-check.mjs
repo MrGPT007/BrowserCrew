@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { createPreparedScheduleMetadata } from "../src/schedule-prepared-metadata.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -54,6 +55,7 @@ const skill = {
   updatedAt: now,
   compatibility: { metadataVersion: 1, minBrowserCrewVersion: "0.2.0" }
 };
+const prepared = createPreparedScheduleMetadata({ skill, pageUrl: "https://example.test/orders", reviewedAt: now });
 const schedule = {
   schemaVersion: 1,
   id: "scheduled-order-check-daily",
@@ -67,6 +69,7 @@ const schedule = {
   providerRef: "provider-a",
   grantRefs: ["grant-a"],
   budgets: { maxSteps: 5, maxMinutes: 5 },
+  ...prepared,
   createdAt: now,
   updatedAt: now,
   nextRunAt: null
@@ -75,6 +78,8 @@ const provider = { id: "provider-a", available: true, capabilities: ["structured
 const grant = {
   id: "grant-a",
   scope: "schedule",
+  status: "active",
+  scheduleId: schedule.id,
   skillRef: { id: skill.id, version: skill.version },
   origins: ["https://example.test"],
   resources: ["resource:orders"],
@@ -105,6 +110,13 @@ assert.equal(JSON.stringify(ready).includes("west"), false, "Readiness summaries
 assert.deepEqual(ready.resource, { tabId: 42, url: "https://example.test/orders", resources: ["resource:orders"] });
 assert.deepEqual(ready.provider, provider);
 
+const legacySchedule = structuredClone(schedule);
+delete legacySchedule.startResource;
+delete legacySchedule.authorityPlan;
+const legacyReadiness = await inspectScheduleSkillReadiness({ schedule: legacySchedule, skill, ...resolvers() });
+assert.equal(legacyReadiness.ready, false, "A legacy prepared record must remain readable but not activation-ready.");
+assert(legacyReadiness.blockers.some((item) => item.code === "SCHEDULE_BINDING_REQUIRED"));
+
 let preflightExecutions = 0;
 const preflightDispatcher = createScheduleSkillDispatcher({
   ...resolvers(),
@@ -113,6 +125,7 @@ const preflightDispatcher = createScheduleSkillDispatcher({
 const preflight = await preflightDispatcher({ mode: "preflight", schedule, skill });
 assert.deepEqual(preflight, { grantsValid: true, providerAvailable: true, resourceFresh: true, blockers: [] });
 assert.equal(preflightExecutions, 0, "Preflight must never create a Skill run.");
+await assert.rejects(() => preflightDispatcher({ mode: "preflight", schedule: legacySchedule, skill }), (error) => error?.code === "SCHEDULE_BINDING_REQUIRED");
 
 const resolutionCounts = { provider: 0, grant: 0, resource: 0 };
 let executed = null;
@@ -159,8 +172,14 @@ await assert.rejects(
 );
 await assert.rejects(
   () => preflightDispatcher({ mode: "preflight", schedule: { ...schedule, skillRef: { id: skill.id, version: "2.0.0" } }, skill }),
-  (error) => error?.code === "SCHEDULE_SKILL_VERSION_CHANGED"
+  (error) => ["SCHEDULE_SKILL_VERSION_CHANGED", "SCHEDULE_BINDING_SKILL_MISMATCH"].includes(error?.code)
 );
+
+const staleAuthorityPlan = structuredClone(schedule);
+staleAuthorityPlan.authorityPlan.resources = [];
+const stalePlanReadiness = await inspectScheduleSkillReadiness({ schedule: staleAuthorityPlan, skill, ...resolvers() });
+assert.equal(stalePlanReadiness.ready, false);
+assert(stalePlanReadiness.blockers.some((item) => item.code === "SCHEDULE_AUTHORITY_PLAN_MISMATCH"));
 
 const providerMissingCapability = await inspectScheduleSkillReadiness({
   schedule,
@@ -180,14 +199,21 @@ const unavailableProvider = await inspectScheduleSkillReadiness({
 assert.equal(unavailableProvider.ready, false);
 assert(unavailableProvider.blockers.some((item) => item.code === "SCHEDULE_PROVIDER_UNAVAILABLE"));
 
-const wrongScopeGrant = await inspectScheduleSkillReadiness({
-  schedule,
-  skill,
-  ...resolvers(),
-  resolveGrant: async () => ({ ...structuredClone(grant), scope: "one_run" })
-});
-assert.equal(wrongScopeGrant.ready, false);
-assert(wrongScopeGrant.blockers.some((item) => item.code === "SCHEDULE_GRANT_SKILL_MISMATCH"));
+for (const [label, mutate, code] of [
+  ["wrong scope", (copy) => { copy.scope = "one_run"; }, "SCHEDULE_GRANT_SCOPE_MISMATCH"],
+  ["inactive", (copy) => { copy.status = "prepared"; }, "SCHEDULE_GRANT_SCOPE_MISMATCH"],
+  ["other schedule", (copy) => { copy.scheduleId = "another-schedule"; }, "SCHEDULE_GRANT_SCOPE_MISMATCH"],
+  ["unreferenced", (copy) => { copy.id = "grant-other"; }, "SCHEDULE_GRANT_REFERENCE_MISMATCH"]
+]) {
+  const badGrant = await inspectScheduleSkillReadiness({
+    schedule,
+    skill,
+    ...resolvers(),
+    resolveGrant: async () => { const copy = structuredClone(grant); mutate(copy); return copy; }
+  });
+  assert.equal(badGrant.ready, false, `${label} schedule grant must fail closed.`);
+  assert(badGrant.blockers.some((item) => item.code === code), `${label} schedule grant must report ${code}.`);
+}
 
 const expiredGrant = await inspectScheduleSkillReadiness({
   schedule,
@@ -225,6 +251,15 @@ const wrongOrigin = await inspectScheduleSkillReadiness({
 assert.equal(wrongOrigin.ready, false);
 assert(wrongOrigin.blockers.some((item) => item.code === "SCHEDULE_RESOURCE_OUT_OF_SCOPE"));
 
+const wrongExactPage = await inspectScheduleSkillReadiness({
+  schedule,
+  skill,
+  ...resolvers(),
+  resolveResource: async () => ({ ...structuredClone(resource), url: "https://example.test/other" })
+});
+assert.equal(wrongExactPage.ready, false);
+assert(wrongExactPage.blockers.some((item) => item.code === "SCHEDULE_RESOURCE_STALE"));
+
 const missingResource = await inspectScheduleSkillReadiness({
   schedule,
   skill,
@@ -247,15 +282,20 @@ const secretInput = await inspectScheduleSkillReadiness({ schedule, skill: secre
 assert.equal(secretInput.ready, false);
 assert(secretInput.blockers.some((item) => item.code === "SCHEDULE_SECRET_INPUT_REQUIRED"));
 
-for (const file of ["src/schedule-dispatcher.js", "src/schedules-runtime.js"]) await execFileAsync(process.execPath, ["--check", file]);
+for (const file of ["src/schedule-dispatcher.js", "src/schedule-prepared-metadata.js", "src/schedules-runtime.js"]) await execFileAsync(process.execPath, ["--check", file]);
 
 const dispatcherSource = await readFile("src/schedule-dispatcher.js", "utf8");
 for (const phrase of [
   "executeSkillVersion",
+  "assertPreparedScheduleMetadataForSkill",
   "SCHEDULE_SECRET_INPUT_REQUIRED",
-  "SCHEDULE_GRANT_SKILL_MISMATCH",
+  "SCHEDULE_GRANT_SCOPE_MISMATCH",
+  "SCHEDULE_GRANT_REFERENCE_MISMATCH",
+  'grant.status !== "active"',
+  "grant.scheduleId !== schedule?.id",
   "SCHEDULE_PROVIDER_CAPABILITY_MISSING",
   "SCHEDULE_RESOURCE_OUT_OF_SCOPE",
+  "schedule.startResource.url",
   "Re-resolve immediately before dispatch",
   "throwBlocker"
 ]) if (!dispatcherSource.includes(phrase)) throw new Error(`Schedule dispatcher safety contract missing: ${phrase}`);
@@ -277,7 +317,8 @@ const docs = await readFile("docs/POST-V0.2-AUTOMATION.md", "utf8");
 for (const phrase of [
   "Fail-closed schedule dispatcher",
   "does not guess the active tab",
-  "schedule-scoped grant",
+  "active schedule grant",
+  "exact reviewed start page",
   "re-resolves provider, grant, and starting resource immediately before execution"
 ]) if (!docs.includes(phrase)) throw new Error(`Post-v0.2 architecture docs missing dispatcher boundary: ${phrase}`);
 

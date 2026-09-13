@@ -41,6 +41,7 @@ const targets = [
   "skill-replay-resilience-smoke.mjs",
   "schedule-review-smoke.mjs",
   "schedule-setup-smoke.mjs",
+  "schedule-binding-smoke.mjs",
   "schedule-control-smoke.mjs"
 ];
 const report = {

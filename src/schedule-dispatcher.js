@@ -2,6 +2,7 @@ import { materializeSkillSteps } from "./skills-contract.js";
 import { assertSkillMetadataGrantCoversRequirements } from "./skills-contract-metadata.js";
 import { assertGrantCoversSkill } from "./skills-runner.js";
 import { executeSkillVersion } from "./skills-runtime.js";
+import { assertPreparedScheduleMetadataForSkill } from "./schedule-prepared-metadata.js";
 
 export function createScheduleSkillDispatcher({ resolveProvider, resolveGrant, resolveResource, executeSkill = executeSkillVersion } = {}) {
   if (typeof resolveProvider !== "function") throw coded("SCHEDULE_PROVIDER_RESOLVER_REQUIRED", "Scheduled Skill dispatch needs an explicit provider resolver.");
@@ -63,6 +64,7 @@ export async function inspectScheduleSkillReadiness({ schedule, skill, resolvePr
 async function resolveScheduleExecution({ schedule, skill, resolveProvider, resolveGrant, resolveResource }) {
   const blockers = [];
   assertExactScheduleSkill(schedule, skill, blockers);
+  assertPreparedBinding(schedule, skill, blockers);
   assertBudgetsDoNotWiden(schedule, skill, blockers);
   const inputValues = scheduledInputDefaults(skill, blockers);
 
@@ -81,14 +83,14 @@ async function resolveScheduleExecution({ schedule, skill, resolveProvider, reso
   else {
     try { grant = await resolveGrant(schedule?.grantRefs || [], { schedule, skill }); }
     catch { grant = null; }
-    assertScheduledGrant(skill, grant, blockers);
+    assertScheduledGrant(schedule, skill, grant, blockers);
   }
 
   if (typeof resolveResource !== "function") blockers.push(block("SCHEDULE_RESOURCE_RESOLVER_REQUIRED", "BrowserCrew cannot re-find the saved starting resource for this schedule."));
   else {
     try { resource = await resolveResource({ schedule, skill, grant, provider }); }
     catch { resource = null; }
-    assertFreshResource(skill, resource, blockers);
+    assertFreshResource(schedule, skill, resource, blockers);
   }
 
   const unique = dedupeBlockers(blockers);
@@ -108,6 +110,11 @@ function assertExactScheduleSkill(schedule, skill, blockers) {
   if (!schedule || !skill || schedule.skillRef?.id !== skill.id || schedule.skillRef?.version !== skill.version || skill.status !== "approved") {
     blockers.push(block("SCHEDULE_SKILL_VERSION_CHANGED", "The schedule must still point to the exact approved Skill version that was reviewed."));
   }
+}
+
+function assertPreparedBinding(schedule, skill, blockers) {
+  try { assertPreparedScheduleMetadataForSkill(schedule, skill); }
+  catch (error) { blockers.push(block(error?.code || "SCHEDULE_BINDING_INVALID", error?.message || "Review the prepared starting page again before this schedule can run.")); }
 }
 
 function assertBudgetsDoNotWiden(schedule, skill, blockers) {
@@ -154,9 +161,17 @@ function assertProvider(schedule, skill, provider, blockers) {
   }
 }
 
-function assertScheduledGrant(skill, grant, blockers) {
-  if (!grant || grant.scope !== "schedule" || grant.skillRef?.id !== skill?.id || grant.skillRef?.version !== skill?.version) {
-    blockers.push(block("SCHEDULE_GRANT_SKILL_MISMATCH", "The schedule needs a schedule-scoped permission grant pinned to this exact Skill version."));
+function assertScheduledGrant(schedule, skill, grant, blockers) {
+  if (!grant) {
+    blockers.push(block("SCHEDULE_GRANT_REQUIRED", "This prepared schedule has no active schedule permission grant."));
+    return;
+  }
+  if (grant.scope !== "schedule" || grant.status !== "active" || grant.scheduleId !== schedule?.id || grant.skillRef?.id !== skill?.id || grant.skillRef?.version !== skill?.version) {
+    blockers.push(block("SCHEDULE_GRANT_SCOPE_MISMATCH", "The saved permission grant must be active and pinned to this exact schedule and Skill version."));
+    return;
+  }
+  if (!grant.id || !(schedule?.grantRefs || []).includes(grant.id)) {
+    blockers.push(block("SCHEDULE_GRANT_REFERENCE_MISMATCH", "The active schedule permission grant is not referenced by this exact schedule."));
     return;
   }
   try {
@@ -167,16 +182,20 @@ function assertScheduledGrant(skill, grant, blockers) {
   }
 }
 
-function assertFreshResource(skill, resource, blockers) {
+function assertFreshResource(schedule, skill, resource, blockers) {
   if (!resource || resource.fresh !== true || !Number.isInteger(resource.tabId) || typeof resource.url !== "string") {
     blockers.push(block("SCHEDULE_RESOURCE_STALE", "BrowserCrew could not safely re-find the saved starting resource."));
     return;
   }
-  let origin;
-  try { origin = new URL(resource.url).origin; }
-  catch { origin = null; }
-  if (!origin || !(skill?.allowedOrigins || []).includes(origin)) {
+  let url = null;
+  try { url = new URL(resource.url); }
+  catch { url = null; }
+  if (!url || !(skill?.allowedOrigins || []).includes(url.origin)) {
     blockers.push(block("SCHEDULE_RESOURCE_OUT_OF_SCOPE", "The re-resolved starting page is outside the approved Skill site scope."));
+    return;
+  }
+  if (schedule?.startResource?.kind === "exact_url" && url.href !== schedule.startResource.url) {
+    blockers.push(block("SCHEDULE_RESOURCE_STALE", "The re-resolved starting page no longer matches the exact page that was reviewed for this schedule."));
   }
   const resolvedResources = new Set(resource.resources || []);
   for (const required of skill?.allowedResources || []) {

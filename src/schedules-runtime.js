@@ -9,6 +9,7 @@ import {
   validateSchedule
 } from "./schedules-contract.js";
 import { getSkillVersion } from "./skills-runtime.js";
+import { assertPreparedScheduleMetadataForSkill, createPreparedScheduleMetadata } from "./schedule-prepared-metadata.js";
 
 const SCHEDULES_KEY = "browsercrew.schedules.v1";
 const SCHEDULE_RUNS_KEY = "browsercrew.scheduleRuns.v1";
@@ -33,6 +34,7 @@ async function handleScheduleMessage(message) {
     case "capabilities": return { ok: true, alarmsAvailable: Boolean(chrome.alarms?.create), schedulerBooted: booted };
     case "list": return { ok: true, schedules: await listSchedules() };
     case "saveDraft": return saveSchedule({ ...(message.schedule || {}), enabled: false });
+    case "setPreparedBinding": return setPreparedScheduleBinding(message.scheduleId, message.pageUrl);
     case "setEnabled": return setScheduleEnabled(message.scheduleId, message.enabled);
     case "delete": return deleteSchedule(message.scheduleId);
     case "listRuns": return { ok: true, runs: await listScheduleRuns(message.scheduleId || null) };
@@ -60,6 +62,10 @@ export async function listSchedules() {
 
 export async function saveSchedule(input) {
   const schedule = structuredClone(input || {});
+  // Prepared execution metadata can only be created through the dedicated review path below.
+  // Ignore caller-supplied binding fields so saveDraft can never manufacture authority-like state.
+  delete schedule.startResource;
+  delete schedule.authorityPlan;
   const validation = validateSchedule(schedule);
   if (!validation.ok) throw coded("SCHEDULE_INVALID", validation.errors.join(" "));
   if (schedule.enabled) requireAlarmsApi();
@@ -76,6 +82,8 @@ export async function saveSchedule(input) {
   const schedules = await listSchedules();
   const index = schedules.findIndex((item) => item.id === schedule.id);
   if (index < 0 && schedules.length >= MAX_SCHEDULES) throw coded("SCHEDULE_LIMIT", `BrowserCrew can keep up to ${MAX_SCHEDULES} schedules in this build.`);
+  if (index >= 0) preservePreparedMetadata(schedule, schedules[index], skillResult.skill);
+  if (schedule.enabled) assertPreparedScheduleMetadataForSkill(schedule, skillResult.skill);
   const now = new Date().toISOString();
   schedule.createdAt = index >= 0 ? schedules[index].createdAt : schedule.createdAt || now;
   schedule.updatedAt = now;
@@ -87,12 +95,45 @@ export async function saveSchedule(input) {
   return { ok: true, schedule };
 }
 
+export async function setPreparedScheduleBinding(scheduleId, pageUrl) {
+  if (!scheduleId) throw coded("SCHEDULE_NOT_FOUND", "Choose the prepared schedule whose starting page you want to review.");
+  const schedules = await listSchedules();
+  const index = schedules.findIndex((item) => item.id === scheduleId);
+  if (index < 0) throw coded("SCHEDULE_NOT_FOUND", "That prepared schedule could not be found.");
+  const existing = schedules[index];
+  if (existing.enabled) throw coded("SCHEDULE_BINDING_PREPARED_ONLY", "Pause this schedule before changing its reviewed starting page.");
+  if (Array.isArray(existing.grantRefs) && existing.grantRefs.length) {
+    throw coded("SCHEDULE_BINDING_ACTIVE_GRANT_PRESENT", "This schedule already references durable authority. Revoke or replace that grant through the future activation review flow before changing its starting page.");
+  }
+
+  const skillResult = await getSkillVersion(existing.skillRef.id, existing.skillRef.version);
+  if (!skillResult.ok) throw coded("SCHEDULE_SKILL_NOT_FOUND", "The exact approved Skill version for this schedule is no longer available.");
+  const metadata = createPreparedScheduleMetadata({ skill: skillResult.skill, pageUrl });
+  const schedule = {
+    ...existing,
+    startResource: metadata.startResource,
+    authorityPlan: metadata.authorityPlan,
+    grantRefs: [],
+    updatedAt: new Date().toISOString()
+  };
+  assertPreparedScheduleMetadataForSkill(schedule, skillResult.skill);
+  schedules[index] = schedule;
+  await persistSchedules(schedules);
+  return { ok: true, schedule };
+}
+
 export async function setScheduleEnabled(scheduleId, enabled) {
   const desired = Boolean(enabled);
   if (desired) requireAlarmsApi();
   const schedules = await listSchedules();
   const index = schedules.findIndex((item) => item.id === scheduleId);
   if (index < 0) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
+  if (desired) {
+    const exact = schedules[index];
+    const skillResult = await getSkillVersion(exact.skillRef.id, exact.skillRef.version);
+    if (!skillResult.ok) throw coded("SCHEDULE_SKILL_NOT_FOUND", "The exact approved Skill version for this schedule is no longer available.");
+    assertPreparedScheduleMetadataForSkill(exact, skillResult.skill);
+  }
   const schedule = { ...schedules[index], enabled: desired, updatedAt: new Date().toISOString() };
   schedule.nextRunAt = schedule.enabled ? new Date(nextRun(schedule)).toISOString() : null;
   schedules[index] = schedule;
@@ -399,6 +440,13 @@ async function updateRunReceipt(receipt) {
 
 async function persistSchedules(schedules) {
   await chrome.storage.local.set({ [SCHEDULES_KEY]: schedules.slice(0, MAX_SCHEDULES) });
+}
+
+function preservePreparedMetadata(schedule, existing, skill) {
+  try { assertPreparedScheduleMetadataForSkill(existing, skill); }
+  catch { return; }
+  schedule.startResource = structuredClone(existing.startResource);
+  schedule.authorityPlan = structuredClone(existing.authorityPlan);
 }
 
 function shouldSkip(error) {
