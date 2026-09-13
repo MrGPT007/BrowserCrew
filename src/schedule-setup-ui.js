@@ -3,6 +3,7 @@ const SKILLS_PORT = "browsercrew-skills";
 const CONNECTIONS_PORT = "browsercrew-connections";
 
 let preparedSchedules = [];
+let scheduleRuns = [];
 let approvedSkills = [];
 let connections = [];
 let activeConnectionId = null;
@@ -117,7 +118,7 @@ function createPreparedSchedulesSection() {
   section.id = "preparedSchedulesSection";
   section.innerHTML = `
     <div class="card-heading"><div><p class="step-label">PREPARED SCHEDULES</p><h3>Ready for a future schedule release</h3></div><span class="badge" id="preparedScheduleCount">0</span></div>
-    <p class="helper">Prepared schedules are saved but disabled. You can edit or delete them now; this build cannot activate them.</p>
+    <p class="helper">Prepared schedules are saved but disabled. You can review every boundary, edit the setup, or delete it now. Run now and Pause stay unavailable until BrowserCrew intentionally ships background scheduling.</p>
     <div id="preparedScheduleList"><div class="empty">No prepared schedules yet.</div></div>`;
   return section;
 }
@@ -136,9 +137,14 @@ async function loadConnections() {
 }
 
 async function loadPreparedSchedules() {
-  const response = await portRequest(SCHEDULES_PORT, { type: "list" });
-  if (!response.ok) throw new Error(response.error?.message || "Could not load prepared schedules.");
-  preparedSchedules = (response.schedules || []).filter((schedule) => schedule.enabled === false);
+  const [scheduleResponse, runResponse] = await Promise.all([
+    portRequest(SCHEDULES_PORT, { type: "list" }),
+    portRequest(SCHEDULES_PORT, { type: "listRuns" })
+  ]);
+  if (!scheduleResponse.ok) throw new Error(scheduleResponse.error?.message || "Could not load prepared schedules.");
+  if (!runResponse.ok) throw new Error(runResponse.error?.message || "Could not load schedule history.");
+  preparedSchedules = (scheduleResponse.schedules || []).filter((schedule) => schedule.enabled === false);
+  scheduleRuns = Array.isArray(runResponse.runs) ? runResponse.runs : [];
 }
 
 function hydrateScheduleSetup() {
@@ -204,12 +210,38 @@ function renderPreparedSchedules() {
   list.innerHTML = preparedSchedules.map((schedule) => {
     const skill = approvedSkills.find((item) => item.id === schedule.skillRef?.id && item.version === schedule.skillRef?.version);
     const connection = connections.find((item) => item.id === schedule.providerRef);
+    const latestRun = latestRunFor(schedule.id);
+    const sites = skill?.allowedOrigins?.length ? skill.allowedOrigins.join(", ") : "Exact Skill unavailable";
+    const resources = skill?.allowedResources?.length ? skill.allowedResources.join(", ") : "None requested";
+    const actions = skill?.actionClasses?.length ? skill.actionClasses.join(", ") : "None listed";
+    const destinations = skill?.dataDestinations?.length ? skill.dataDestinations.join(", ") : "None";
+    const provider = connection ? `${connection.name}${connection.model ? ` · ${connection.model}` : ""}` : "Saved AI connection unavailable";
     return `<article class="skill-card" data-prepared-schedule="${escapeAttr(schedule.id)}">
-      <div><strong>${escapeHtml(schedule.name)}</strong><p>${escapeHtml(describeRecurrence(schedule))}</p><small>Prepared · not active · ${escapeHtml(skill?.title || schedule.skillRef?.id || "Unknown skill")} · ${escapeHtml(connection?.name || "Saved AI connection")} · ${escapeHtml(schedule.timezone)}</small></div>
+      <div>
+        <div class="card-heading"><div><strong>${escapeHtml(schedule.name)}</strong><p>${escapeHtml(describeRecurrence(schedule))}</p></div><span class="badge">Prepared · off</span></div>
+        <div class="selection-summary" data-schedule-boundaries="${escapeAttr(schedule.id)}">
+          <p><strong>Status:</strong> Prepared — not active in this build.</p>
+          <p><strong>Next run:</strong> ${escapeHtml(nextRunSummary(schedule))}</p>
+          <p><strong>Last run:</strong> ${escapeHtml(lastRunSummary(schedule, latestRun))}</p>
+          <p><strong>Exact job:</strong> ${escapeHtml(skill?.title || schedule.skillRef?.id || "Unknown skill")} · v${escapeHtml(schedule.skillRef?.version || "?")}</p>
+          <p><strong>AI / model:</strong> ${escapeHtml(provider)}</p>
+          <p><strong>Timezone:</strong> ${escapeHtml(schedule.timezone || "UTC")}</p>
+          <p><strong>Sites:</strong> ${escapeHtml(sites)}</p>
+          <p><strong>Resources:</strong> ${escapeHtml(resources)}</p>
+          <p><strong>Permission scope:</strong> Actions ${escapeHtml(actions)} · Data destinations ${escapeHtml(destinations)}</p>
+          <p><strong>Budget:</strong> Up to ${escapeHtml(schedule.budgets?.maxSteps ?? "?")} steps · ${escapeHtml(schedule.budgets?.maxMinutes ?? "?")} minutes.</p>
+          <p><strong>Missed run:</strong> ${escapeHtml(missedPolicyLabel(schedule.missedRunPolicy))}</p>
+          <p><strong>Overlap:</strong> ${escapeHtml(concurrencyPolicyLabel(schedule.concurrencyPolicy))}</p>
+          <p><strong>Device availability:</strong> BrowserCrew cannot wake a sleeping or offline browser or device. The missed-run rule applies when BrowserCrew becomes available again.</p>
+        </div>
+      </div>
       <div class="skill-actions">
+        <button class="button button-small tactile" type="button" disabled aria-disabled="true">Run now</button>
+        <button class="button button-small tactile" type="button" disabled aria-disabled="true">Pause</button>
         <button class="button button-small tactile" type="button" data-edit-schedule="${escapeAttr(schedule.id)}">Edit</button>
         <button class="button button-small tactile" type="button" data-delete-schedule="${escapeAttr(schedule.id)}">Delete</button>
       </div>
+      <p class="helper">Run now and Pause are unavailable while background scheduling is intentionally locked for this build.</p>
     </article>`;
   }).join("");
 }
@@ -435,6 +467,60 @@ function selectedSkill() {
   const id = raw.slice(0, separator);
   const version = raw.slice(separator + 2);
   return approvedSkills.find((skill) => skill.id === id && skill.version === version) || null;
+}
+
+function latestRunFor(scheduleId) {
+  return scheduleRuns
+    .filter((run) => run.scheduleId === scheduleId)
+    .sort((a, b) => runTime(b) - runTime(a))[0] || null;
+}
+
+function runTime(run) {
+  for (const value of [run.completedAt, run.startedAt, run.firedAt, run.scheduledFor, run.reviewRequestedAt]) {
+    const time = Date.parse(value || "");
+    if (Number.isFinite(time)) return time;
+  }
+  return 0;
+}
+
+function nextRunSummary(schedule) {
+  if (schedule.nextRunAt) return formatDateTime(schedule.nextRunAt);
+  return "Not scheduled — this prepared schedule is off and no background alarm exists.";
+}
+
+function lastRunSummary(schedule, latestRun) {
+  if (latestRun) {
+    const time = runTime(latestRun);
+    const when = time ? formatDateTime(time) : "Saved history";
+    return `${when} · ${runStatusLabel(latestRun.status)} · receipt ${latestRun.id || "unknown"}`;
+  }
+  if (schedule.lastRunAt) return formatDateTime(schedule.lastRunAt);
+  return "Never";
+}
+
+function runStatusLabel(status) {
+  const labels = {
+    completed: "Completed",
+    failed: "Failed",
+    blocked: "Blocked",
+    skipped: "Skipped",
+    needs_review: "Needs review",
+    queued: "Queued",
+    running: "Running",
+    checking: "Checking"
+  };
+  return labels[status] || "Recorded";
+}
+
+function missedPolicyLabel(value) {
+  if (value === "skip") return "Skip the missed run.";
+  if (value === "run_once_when_available") return "Run it once when BrowserCrew is available again.";
+  return "Ask me what to do.";
+}
+
+function concurrencyPolicyLabel(value) {
+  if (value === "queue_one") return "Queue one run; reject additional overlap.";
+  return "Skip the overlapping run.";
 }
 
 function describeRecurrence(schedule) {

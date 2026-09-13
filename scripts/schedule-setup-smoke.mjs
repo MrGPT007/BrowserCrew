@@ -23,6 +23,7 @@ const skill = {
   description: "Read the approved supplier dashboard and verify its ready state.",
   inputs: {},
   allowedOrigins: ["https://example.test"],
+  allowedResources: ["catalog:suppliers"],
   actionClasses: ["read"],
   dataDestinations: [],
   budgets: { maxSteps: 7, maxMinutes: 6 },
@@ -56,7 +57,7 @@ try {
   context = await chromium.launchPersistentContext(profileDir, {
     channel: "chromium",
     headless: true,
-    viewport: { width: 1280, height: 1000 },
+    viewport: { width: 1280, height: 1200 },
     args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`]
   });
   let [worker] = context.serviceWorkers();
@@ -69,7 +70,8 @@ try {
       "browsercrew.skillLibrary.v1": [skillSeed],
       "browsercrew.connections.v1": [connectionSeed],
       "browsercrew.activeConnection.v1": connectionSeed.id,
-      "browsercrew.schedules.v1": []
+      "browsercrew.schedules.v1": [],
+      "browsercrew.scheduleRuns.v1": []
     });
   }, { skillSeed: skill, connectionSeed: connection });
 
@@ -124,9 +126,52 @@ try {
   assert.equal(schedules.find((item) => item.name === "Daily supplier check")?.missedRunPolicy, "run_once_when_available");
   assert.equal(schedules.find((item) => item.name === "Weekly supplier check")?.concurrencyPolicy, "queue_one");
   assert.equal(schedules.find((item) => item.name === "Custom supplier check")?.recurrence.everyMinutes, 90);
+  await waitUntil(async () => await panel.locator("[data-prepared-schedule]").count() === 4, "All four prepared schedule cards should render before status review.");
   pass("Once, Daily, Weekly, and Custom presets persist as disabled exact-skill schedules with named AI and inherited budgets");
 
   const daily = schedules.find((item) => item.name === "Daily supplier check");
+  const dailyCard = panel.locator(`[data-prepared-schedule="${daily.id}"]`);
+  const dailyText = await dailyCard.innerText();
+  for (const phrase of [
+    "Status: Prepared — not active in this build.",
+    "Next run: Not scheduled",
+    "Last run: Never",
+    "Exact job: Check supplier dashboard · v1.2.0",
+    "AI / model: Local planning AI · browsercrew-local-test",
+    "Timezone: America/New_York",
+    "Sites: https://example.test",
+    "Resources: catalog:suppliers",
+    "Permission scope: Actions read · Data destinations None",
+    "Budget: Up to 7 steps · 6 minutes.",
+    "Missed run: Run it once when BrowserCrew is available again.",
+    "Overlap: Skip the overlapping run.",
+    "BrowserCrew cannot wake a sleeping or offline browser or device."
+  ]) assert.ok(dailyText.includes(phrase), `Prepared schedule boundary card missing: ${phrase}`);
+  assert.equal(await dailyCard.getByRole("button", { name: "Run now" }).isDisabled(), true);
+  assert.equal(await dailyCard.getByRole("button", { name: "Pause" }).isDisabled(), true);
+  assert.equal(await dailyCard.getByRole("button", { name: "Edit" }).isEnabled(), true);
+  assert.equal(await dailyCard.getByRole("button", { name: "Delete" }).isEnabled(), true);
+
+  const weekly = schedules.find((item) => item.name === "Weekly supplier check");
+  assert.match(await panel.locator(`[data-prepared-schedule="${weekly.id}"]`).innerText(), /Overlap: Queue one run; reject additional overlap\./);
+  const custom = schedules.find((item) => item.name === "Custom supplier check");
+  assert.match(await panel.locator(`[data-prepared-schedule="${custom.id}"]`).innerText(), /Missed run: Skip the missed run\./);
+  pass("Prepared cards expose status, exact provider and Skill scope, safety limits, missed/overlap rules, and honest device availability while Run now and Pause stay unavailable");
+
+  const historyReceipt = {
+    id: "schedule-run-history-1",
+    schemaVersion: 1,
+    scheduleId: daily.id,
+    skillRef: daily.skillRef,
+    scheduledFor: "2026-09-12T12:00:00.000Z",
+    firedAt: "2026-09-12T12:01:00.000Z",
+    status: "completed",
+    reason: null,
+    taskId: "task-history-1",
+    completedAt: "2026-09-12T12:02:00.000Z"
+  };
+  await worker.evaluate(async (receipt) => chrome.storage.local.set({ "browsercrew.scheduleRuns.v1": [receipt] }), historyReceipt);
+
   const originalCreatedAt = daily.createdAt;
   await panel.locator(`[data-edit-schedule="${daily.id}"]`).click();
   await panel.locator("#scheduleName").fill("Daily supplier check updated");
@@ -146,7 +191,11 @@ try {
   assert.equal(updated.recurrence.weekday, 2);
   assert.equal(updated.recurrence.hour, 11);
   assert.equal(updated.recurrence.minute, 45);
-  pass("Editing a prepared schedule preserves identity while keeping it disabled");
+  await waitUntil(async () => /Completed · receipt schedule-run-history-1/.test(await panel.locator(`[data-prepared-schedule="${daily.id}"]`).innerText()), "Edited prepared schedule card should surface the exact durable history receipt.");
+  const updatedCardText = await panel.locator(`[data-prepared-schedule="${daily.id}"]`).innerText();
+  assert.match(updatedCardText, /Last run: .*Completed · receipt schedule-run-history-1/);
+  assert.match(updatedCardText, /Missed run: Ask me what to do\./);
+  pass("Editing preserves identity and the prepared card reads immutable schedule-run history without activating the schedule");
 
   assert.equal(await panel.locator('#schedulesPreviewCard [data-enable-schedule], #schedulesPreviewCard [data-set-enabled]').count(), 0, "Prepared schedule UI must expose no activation control.");
   assert.match(await panel.locator("#scheduleSetupPanel").innerText(), /does not turn the schedule on/i);
@@ -158,8 +207,9 @@ try {
     await waitUntil(async () => (await storedSchedules(worker)).every((item) => item.id !== schedule.id), `Prepared schedule ${schedule.id} should be deleted.`);
   }
   assert.equal((await storedSchedules(worker)).length, 0);
+  assert.equal((await storedScheduleRuns(worker)).some((run) => run.id === historyReceipt.id), true, "Deleting a prepared schedule must not erase its historical run receipt.");
   await waitUntil(async () => /No prepared schedules yet/i.test(await panel.locator("#preparedScheduleList").innerText()), "Prepared schedule list should return to empty state.");
-  pass("Prepared schedules can be deleted without scheduler activation or alarms permission");
+  pass("Prepared schedules can be deleted without scheduler activation while historical run evidence remains durable");
 
   await panel.screenshot({ path: join(artifactDir, "schedule-setup.png"), fullPage: true });
   report.completedAt = new Date().toISOString();
@@ -195,6 +245,10 @@ async function createSchedule(panel, { name, preset, fill, missed = "ask", concu
 
 async function storedSchedules(worker) {
   return worker.evaluate(async () => (await chrome.storage.local.get("browsercrew.schedules.v1"))["browsercrew.schedules.v1"] || []);
+}
+
+async function storedScheduleRuns(worker) {
+  return worker.evaluate(async () => (await chrome.storage.local.get("browsercrew.scheduleRuns.v1"))["browsercrew.scheduleRuns.v1"] || []);
 }
 
 function pass(name) { report.checks.push({ name, at: new Date().toISOString() }); }
