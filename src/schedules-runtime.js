@@ -23,6 +23,7 @@ const MAX_SCHEDULES = 100;
 const MAX_RUN_RECEIPTS = 500;
 const ALARM_PREFIX = "browsercrew.schedule.";
 const occurrenceLocks = new Map();
+let runHistoryMutation = null;
 let booted = false;
 let bootPromise = null;
 let dispatchScheduledRun = null;
@@ -493,17 +494,32 @@ function scheduledTaskOutcome(result) {
 }
 
 async function appendRunReceipt(receipt) {
-  const runs = await listScheduleRuns();
-  runs.unshift(receipt);
-  await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.slice(0, MAX_RUN_RECEIPTS) });
+  return withRunHistoryMutation(async () => {
+    const runs = await listScheduleRuns();
+    runs.unshift(structuredClone(receipt));
+    await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.slice(0, MAX_RUN_RECEIPTS) });
+  });
 }
 
 async function updateRunReceipt(receipt) {
-  const runs = await listScheduleRuns();
-  const index = runs.findIndex((item) => item.id === receipt.id);
-  if (index >= 0) runs[index] = structuredClone(receipt);
-  else runs.unshift(structuredClone(receipt));
-  await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.slice(0, MAX_RUN_RECEIPTS) });
+  return withRunHistoryMutation(async () => {
+    const runs = await listScheduleRuns();
+    const index = runs.findIndex((item) => item.id === receipt.id);
+    if (index >= 0) runs[index] = structuredClone(receipt);
+    else runs.unshift(structuredClone(receipt));
+    await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.slice(0, MAX_RUN_RECEIPTS) });
+  });
+}
+
+async function withRunHistoryMutation(work) {
+  const previous = runHistoryMutation || Promise.resolve();
+  const current = previous.catch(() => {}).then(work);
+  runHistoryMutation = current;
+  try {
+    return await current;
+  } finally {
+    if (runHistoryMutation === current) runHistoryMutation = null;
+  }
 }
 
 async function persistSchedules(schedules) {
