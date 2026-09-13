@@ -58,10 +58,14 @@ try {
   assert.match(await panel.locator("#watchMeStatus").innerText(), /Watching/i);
   pass("Watch me do it started only for the user-selected active fixture page");
 
-  await target.locator("#email").fill(LITERALS.email);
+  await target.locator("#email").click();
+  await target.locator("#email").pressSequentially(LITERALS.email);
   await target.locator("#email").press("Tab");
-  await target.locator("#department").selectOption(LITERALS.department);
-  await target.locator("#password").fill(LITERALS.password);
+  await target.locator("#department").focus();
+  await target.locator("#department").press("End");
+  await target.locator("#department").press("Tab");
+  await target.locator("#password").click();
+  await target.locator("#password").pressSequentially(LITERALS.password);
   await target.locator("#password").press("Tab");
   await target.locator("#preview").click();
   await target.locator("#ready").waitFor({ state: "visible", timeout: timeoutMs });
