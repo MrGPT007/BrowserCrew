@@ -293,6 +293,13 @@ export async function reviewMissedScheduleRun(runId, decision) {
       await persistClaim();
       return { action: "done", ok: false, receipt, message: "The schedule for this missed job no longer exists." };
     }
+    if (!schedule.enabled && schedule.recurrence.kind !== "once") {
+      receipt.status = "blocked";
+      receipt.reason = "SCHEDULE_PAUSED";
+      receipt.completedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "done", ok: false, receipt, message: "This schedule was paused before the reviewed job could start." };
+    }
 
     const activeRun = runs.some((run) => run.id !== receipt.id && run.scheduleId === receipt.scheduleId && ["checking", "running"].includes(run.status));
     const queuedRun = runs.some((run) => run.id !== receipt.id && run.scheduleId === receipt.scheduleId && run.status === "queued");
