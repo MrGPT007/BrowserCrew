@@ -42,7 +42,7 @@ for (const phrase of [
   'SCHEDULE_ALARM_MISSING',
   'SCHEDULE_PAUSED',
   'trigger: "manual"',
-  'reviewMissedScheduleRun(receipt.id, "run_once")',
+  'reviewMissedScheduleRun(receipt.id, "run_once", schedule)',
   'removeManualReceipt(receipt.id)',
   'from "./schedule-run-history-mutation.js"',
   'await withScheduleRunHistoryMutation(async () =>',
