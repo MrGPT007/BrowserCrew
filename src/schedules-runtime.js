@@ -101,8 +101,6 @@ export async function listSchedules() {
 
 export async function saveSchedule(input) {
   const schedule = structuredClone(input || {});
-  // Prepared execution metadata can only be created through the dedicated review path below.
-  // Ignore caller-supplied binding fields so saveDraft can never manufacture authority-like state.
   delete schedule.startResource;
   delete schedule.authorityPlan;
   const validation = validateSchedule(schedule);
@@ -123,8 +121,6 @@ export async function saveSchedule(input) {
   if (validationIndex < 0 && validationSchedules.length >= MAX_SCHEDULES) throw coded("SCHEDULE_LIMIT", `BrowserCrew can keep up to ${MAX_SCHEDULES} schedules in this build.`);
   const existingSnapshot = validationIndex >= 0 ? structuredClone(validationSchedules[validationIndex]) : null;
   if (existingSnapshot) await assertScheduleEditAllowedWithGrant(existingSnapshot, schedule);
-  // saveDraft can neither add nor replace authority references. The dedicated
-  // grant lifecycle owns these refs; ordinary edits preserve only trusted stored refs.
   schedule.grantRefs = existingSnapshot && Array.isArray(existingSnapshot.grantRefs) ? structuredClone(existingSnapshot.grantRefs) : [];
   if (existingSnapshot) preservePreparedMetadata(schedule, existingSnapshot, skillResult.skill);
   if (schedule.enabled) {
@@ -292,6 +288,13 @@ export async function reviewMissedScheduleRun(runId, decision) {
       receipt.completedAt = new Date().toISOString();
       await persistClaim();
       return { action: "done", ok: false, receipt, message: "The schedule for this missed job no longer exists." };
+    }
+    if (!schedule.enabled && schedule.recurrence.kind !== "once") {
+      receipt.status = "blocked";
+      receipt.reason = "SCHEDULE_PAUSED";
+      receipt.completedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "done", ok: false, receipt, message: "This schedule was paused before the reviewed job could start." };
     }
 
     const activeRun = runs.some((run) => run.id !== receipt.id && run.scheduleId === receipt.scheduleId && ["checking", "running"].includes(run.status));
