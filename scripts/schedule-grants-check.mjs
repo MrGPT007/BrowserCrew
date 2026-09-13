@@ -14,11 +14,13 @@ const execFileAsync = promisify(execFile);
 for (const file of [
   "src/schedule-grants-contract.js",
   "src/schedule-grants-runtime.js",
+  "src/schedule-state-mutation.js",
   "src/schedule-grants-ui.js",
   "src/schedule-binding-ui.js",
   "src/schedules-runtime.js",
   "src/schedule-dispatcher.js",
-  "scripts/schedule-grants-smoke.mjs"
+  "scripts/schedule-grants-smoke.mjs",
+  "scripts/schedule-grant-state-race-check.mjs"
 ]) await execFileAsync(process.execPath, ["--check", file]);
 
 const createdAt = "2026-09-13T06:00:00.000Z";
@@ -93,22 +95,35 @@ const runtimeSource = await readFile("src/schedule-grants-runtime.js", "utf8");
 for (const phrase of [
   'const SCHEDULE_GRANTS_KEY = "browsercrew.scheduleGrants.v1"',
   'const SCHEDULE_GRANTS_PORT = "browsercrew-schedule-grants"',
+  'from "./schedule-state-mutation.js"',
   "approveScheduleGrant",
   "revokeScheduleGrantById",
+  "withScheduleStateMutation(async () =>",
+  "assertScheduleTargetUnchanged(current, scheduleSnapshot)",
   "assertScheduleEditAllowedWithGrant",
   "resolveActiveScheduleGrant",
   "revokeScheduleGrantsForDeletedSchedule",
+  "scheduleStateLockHeld ? work() : withScheduleStateMutation(work)",
   "schedule_deleted"
 ]) assert.ok(runtimeSource.includes(phrase), `Schedule grant runtime contract missing: ${phrase}`);
+
+const sharedStateSource = await readFile("src/schedule-state-mutation.js", "utf8");
+for (const phrase of [
+  "let scheduleStateMutation = null",
+  "export async function withScheduleStateMutation(work)",
+  "const previous = scheduleStateMutation || Promise.resolve()",
+  "if (scheduleStateMutation === current) scheduleStateMutation = null"
+]) assert.ok(sharedStateSource.includes(phrase), `Cross-module schedule state mutex missing: ${phrase}`);
 
 const schedulesRuntime = await readFile("src/schedules-runtime.js", "utf8");
 for (const phrase of [
   'from "./schedule-grants-runtime.js"',
+  'from "./schedule-state-mutation.js"',
   "await assertScheduleEditAllowedWithGrant(existingSnapshot, schedule)",
   "assertScheduleTargetUnchanged(current, existingSnapshot)",
   "await resolveActiveScheduleGrant(schedule.grantRefs, { schedule, skill: skillResult.skill })",
   "await resolveActiveScheduleGrant(existing.grantRefs, { schedule: existing, skill: skillResult.skill })",
-  "await revokeScheduleGrantsForDeletedSchedule(scheduleId)"
+  "await revokeScheduleGrantsForDeletedSchedule(scheduleId, { scheduleStateLockHeld: true })"
 ]) assert.ok(schedulesRuntime.includes(phrase), `Schedule storage authority boundary missing: ${phrase}`);
 
 const dispatcher = await readFile("src/schedule-dispatcher.js", "utf8");
@@ -153,5 +168,7 @@ const serviceWorker = await readFile("src/service-worker.js", "utf8");
 assert.equal(serviceWorker.includes("bootSchedulesRuntime"), false, "Durable grant review must not boot scheduled dispatch.");
 const manifest = JSON.parse(await readFile("manifest.json", "utf8"));
 assert.equal((manifest.permissions || []).includes("alarms"), false, "Durable grant review must not add alarms permission before activation.");
+
+await import("./schedule-grant-state-race-check.mjs");
 
 console.log("BrowserCrew durable exact-schedule grant lifecycle contracts passed.");
