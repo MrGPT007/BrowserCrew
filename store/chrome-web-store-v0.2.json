@@ -9,7 +9,9 @@
     "language": "en",
     "shortDescription": "Run user-approved AI tasks on the browser pages you choose, using cloud or local models you configure.",
     "supportUrlRequired": true,
-    "privacyPolicyUrlRequired": true
+    "supportUrl": "https://github.com/MrGPT007/BrowserCrew/issues",
+    "privacyPolicyUrlRequired": true,
+    "privacyPolicyUrl": "https://github.com/MrGPT007/BrowserCrew/blob/main/docs/PRIVACY-POLICY-v0.2.md"
   },
   "manifestPermissions": [
     {
@@ -29,7 +31,7 @@
     },
     {
       "name": "scripting",
-      "justification": "Reads bounded visible page observations and performs explicitly approved page actions required by the selected browser task.",
+      "justification": "Reads bounded visible-page observations and performs explicitly approved page actions required by the selected browser task.",
       "boundary": "Execution is limited by the selected-resource identity, site permission, workflow policy, stale-state checks, and approval checks."
     },
     {
@@ -145,8 +147,8 @@
     "Chrome Web Store developer account with 2-step verification",
     "Store listing fields completed in Developer Dashboard",
     "Privacy practices fields completed and consistent with this contract and the public privacy policy",
-    "Public privacy policy URL",
-    "Support/contact information",
+    "Reviewed public privacy-policy URL entered in Developer Dashboard",
+    "Reviewed public support URL entered in Developer Dashboard",
     "Required graphic assets uploaded",
     "Exact final candidate ZIP uploaded",
     "Chrome Web Store review completed"

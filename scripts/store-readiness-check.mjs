@@ -30,6 +30,24 @@ const singlePurpose = "BrowserCrew lets users run user-approved AI-assisted task
 if (contract.singlePurpose !== singlePurpose) throw new Error("Store contract single purpose changed without review.");
 if (!storeDoc.includes(`**${singlePurpose}**`)) throw new Error("Chrome Web Store submission pack must repeat the exact single-purpose statement.");
 
+const expectedPrivacyPolicyUrl = "https://github.com/MrGPT007/BrowserCrew/blob/main/docs/PRIVACY-POLICY-v0.2.md";
+const expectedSupportUrl = "https://github.com/MrGPT007/BrowserCrew/issues";
+if (contract.listing?.privacyPolicyUrlRequired !== true || contract.listing?.privacyPolicyUrl !== expectedPrivacyPolicyUrl) {
+  throw new Error("Store contract must pin the reviewed public HTTPS privacy-policy URL.");
+}
+if (contract.listing?.supportUrlRequired !== true || contract.listing?.supportUrl !== expectedSupportUrl) {
+  throw new Error("Store contract must pin the reviewed public HTTPS support URL.");
+}
+for (const [label, value] of [["privacy policy", expectedPrivacyPolicyUrl], ["support", expectedSupportUrl]]) {
+  const parsed = new URL(value);
+  if (parsed.protocol !== "https:") throw new Error(`Reviewed ${label} URL must use HTTPS.`);
+  if (!privacy.includes(value) || !storeDoc.includes(value)) throw new Error(`Reviewed ${label} URL must appear in both the public policy and store submission pack.`);
+}
+for (const stale of ["source draft for the public privacy policy", "Before public submission", "developer must publish a support/contact channel"]) {
+  if (privacy.includes(stale)) throw new Error(`Public privacy policy still contains pre-publication placeholder text: ${stale}`);
+}
+if (!privacy.includes("This is the current public support channel.")) throw new Error("Public privacy policy must identify the current support channel plainly.");
+
 const expectedPermissions = ["sidePanel", "storage", "activeTab", "scripting", "tabs", "downloads"];
 if (JSON.stringify(manifest.permissions) !== JSON.stringify(expectedPermissions)) {
   throw new Error(`Manifest permissions drifted from the reviewed B08 set: ${JSON.stringify(manifest.permissions)}`);

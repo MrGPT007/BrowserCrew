@@ -108,9 +108,14 @@ The disclosure should certify that handled data is used only for BrowserCrew's d
 
 Answer **No**. BrowserCrew does not fetch and execute remote JavaScript or WebAssembly. Model/MCP responses are data; browser/tool actions are implemented by code packaged with the extension.
 
-## Public privacy policy
+## Public privacy policy and support
 
-Publish `docs/PRIVACY-POLICY-v0.2.md` at a stable HTTPS URL before submission. The public copy must include the real support/contact method and remain consistent with the Developer Dashboard Privacy Practices answers.
+Use these reviewed public HTTPS URLs for the v0.2 listing:
+
+- Privacy policy: https://github.com/MrGPT007/BrowserCrew/blob/main/docs/PRIVACY-POLICY-v0.2.md
+- Support: https://github.com/MrGPT007/BrowserCrew/issues
+
+The public privacy policy identifies the issue tracker as BrowserCrew's current support channel and warns users not to post credentials or private task data in public issues. These URLs must remain consistent with `store/chrome-web-store-v0.2.json` and must be entered unchanged in the Chrome Web Store Developer Dashboard unless a separately reviewed stable HTTPS replacement is committed first.
 
 ## Required store assets
 
@@ -132,6 +137,7 @@ Repository/engineering checks:
 - [x] `npm run store-readiness-check` is mandatory on the exact release candidate.
 - [x] `npm run store-media-check` is mandatory and verifies executable screenshot-generation contracts.
 - [x] Exact-candidate CI generates and validates the required 1280×800 product screenshot.
+- [x] Public HTTPS privacy-policy and support URLs are defined in the store contract and statically checked.
 - [ ] `npm run check` passes on the final candidate selected for external submission.
 - [ ] Full current-stable installed-extension matrix passes on the final candidate.
 - [ ] Pinned Chrome 152 matrix passes on the final candidate.
@@ -144,8 +150,8 @@ Developer account and listing:
 - [ ] Chrome Web Store publisher account is active.
 - [ ] 2-step verification is enabled for the publishing account.
 - [ ] Store listing name, category, language, short description, and detailed description are entered.
-- [ ] Support/contact information is entered.
-- [ ] Stable HTTPS privacy-policy URL is entered.
+- [ ] Reviewed support URL is entered in the Developer Dashboard.
+- [ ] Reviewed privacy-policy URL is entered in the Developer Dashboard.
 - [ ] Privacy Practices single-purpose and permission justifications match this document.
 - [ ] Privacy Practices user-data selections match actual v0.2 behavior and the public privacy policy.
 - [ ] Required icon, screenshot, and small promotional tile are uploaded.
