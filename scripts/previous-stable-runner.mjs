@@ -36,6 +36,7 @@ const targets = [
   "skill-portable-smoke.mjs",
   "skill-run-ui-smoke.mjs",
   "skill-completion-check-smoke.mjs",
+  "skill-replay-resilience-smoke.mjs",
   "schedule-review-smoke.mjs",
   "schedule-setup-smoke.mjs"
 ];
