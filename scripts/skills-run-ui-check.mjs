@@ -72,40 +72,28 @@ assert.throws(() => updateDraftCompletionChecks(next, Array.from({ length: MAX_D
 assert.throws(() => updateDraftCompletionChecks({ ...next, status: "approved" }, ["Extra"]), /Only a draft/);
 
 const testSource = await readFile("src/skills-test.js", "utf8");
-for (const phrase of ["testApprovedSkillOnPage", "testDraftSkillOnPage", "materializeSkillSteps", "validateSkill(skill)", 'mode: "draft_preflight"', "SKILL_STEP_REVIEW_REQUIRED", "TARGET_AMBIGUOUS", "Test does not navigate", "Recorded download replay is not enabled", "CLICK_REQUIRES_COMMIT_APPROVAL"]) {
-  assert.ok(testSource.includes(phrase), `Safe Test contract missing: ${phrase}`);
-}
+for (const phrase of ["testApprovedSkillOnPage", "testDraftSkillOnPage", "materializeSkillSteps", "validateSkill(skill)", 'mode: "draft_preflight"', "SKILL_STEP_REVIEW_REQUIRED", "TARGET_AMBIGUOUS", "Test does not navigate", "Recorded download replay is not enabled", "CLICK_REQUIRES_COMMIT_APPROVAL"]) assert.ok(testSource.includes(phrase), `Safe Test contract missing: ${phrase}`);
 assert.equal(testSource.includes("el.click()"), false);
 assert.equal(testSource.includes("el.value ="), false);
 assert.equal(testSource.includes("chrome.tabs.update"), false);
 
 const runUi = await readFile("src/skills-run-ui.js", "utf8");
-for (const phrase of ["A Skill is a saved way to do a browser job", "Versions", "Create next draft version", "Test this page (no changes)", "Review and run once", "Saved Skill requirements do not grant permission by themselves", 'scope: "one_run"', 'type: "run"', "chrome.permissions.request"]) {
-  assert.ok(runUi.includes(phrase), `Skill Test/Run UI contract missing: ${phrase}`);
-}
+for (const phrase of ["A Skill is a saved way to do a browser job", "Versions", "Create next draft version", "Test this page (no changes)", "Review and run once", "Saved Skill requirements do not grant permission by themselves", 'scope: "one_run"', 'type: "run"', "chrome.permissions.request"]) assert.ok(runUi.includes(phrase), `Skill Test/Run UI contract missing: ${phrase}`);
 assert.equal(runUi.includes("chrome.storage"), false);
 
 const draftUi = await readFile("src/skills-draft-test-ui.js", "utf8");
-for (const phrase of ["Test draft — no changes", "DRAFT TEST · OBSERVATION ONLY", "without clicking, typing, navigating, downloading, saving, approving, or running this draft", "Draft Test never asks Chrome for new site access", "chrome.permissions.contains", "testDraftSkillOnPage", "Review this draft first", "No draft step ran and no approval was created"]) {
-  assert.ok(draftUi.includes(phrase), `Draft Test UI safety contract missing: ${phrase}`);
-}
+for (const phrase of ["Test draft — no changes", "DRAFT TEST · OBSERVATION ONLY", "without clicking, typing, navigating, downloading, saving, approving, or running this draft", "Draft Test never asks Chrome for new site access", "chrome.permissions.contains", "testDraftSkillOnPage", "Review this draft first", "No draft step ran and no approval was created"]) assert.ok(draftUi.includes(phrase), `Draft Test UI safety contract missing: ${phrase}`);
 for (const forbidden of ["chrome.permissions.request", "chrome.storage", 'type: "run"', "runPortRequest", "Review and run once"]) assert.equal(draftUi.includes(forbidden), false, `Draft Test UI must not contain authority path: ${forbidden}`);
 
 const completionUi = await readFile("src/skills-completion-checks-ui.js", "utf8");
-for (const phrase of ["Success checks", "Original final check · locked", "Add another check", "Save success checks", "Do not put names, emails, account numbers, passwords, tokens, or other private values here.", "cannot replace the original final result check", 'type: "saveDraft"', "still a draft and has not gained any permission"]) {
-  assert.ok(completionUi.includes(phrase), `Completion-check review UI contract missing: ${phrase}`);
-}
+for (const phrase of ["Success checks", "Original final check · locked", "Add another check", "Save success checks", "Do not put names, emails, account numbers, passwords, tokens, or other private values here.", "cannot replace the original final result check", 'type: "saveDraft"', "still a draft and has not gained any permission"]) assert.ok(completionUi.includes(phrase), `Completion-check review UI contract missing: ${phrase}`);
 for (const forbidden of ["chrome.permissions.request", 'type: "run"', 'type: "approve"']) assert.equal(completionUi.includes(forbidden), false, `Completion-check editor must not contain authority path: ${forbidden}`);
 
 const completionHelper = await readFile("src/skills-completion-checks.js", "utf8");
-for (const phrase of ["MAX_DRAFT_COMPLETION_CHECKS = 5", "MAX_DRAFT_COMPLETION_TEXT = 160", 'draftReviewCompletion: ADDED_MARKER', "steps: [...beforeFinal, ...additions, finalStep]", "completionCriteria: [...baseCriteria, ...addedCriteria]", "validateSkill(next)"]) {
-  assert.ok(completionHelper.includes(phrase), `Completion-check helper contract missing: ${phrase}`);
-}
+for (const phrase of ["MAX_DRAFT_COMPLETION_CHECKS = 5", "MAX_DRAFT_COMPLETION_TEXT = 160", 'draftReviewCompletion: ADDED_MARKER', "steps: [...beforeFinal, ...additions, finalStep]", "completionCriteria: [...baseCriteria, ...addedCriteria]", "validateSkill(next)"]) assert.ok(completionHelper.includes(phrase), `Completion-check helper contract missing: ${phrase}`);
 
 const completionSmoke = await readFile("scripts/skill-completion-check-smoke.mjs", "utf8");
-for (const phrase of ["Run must fail while the user-added visible completion check is absent.", "SKILL_VERIFY_FAILED", "Original final verification must remain last and unchanged", "Saving success checks never self-approves", "completes only after the added success check and original final verification both pass", 'data-submits="0"']) {
-  assert.ok(completionSmoke.includes(phrase), `Completion-check installed-extension proof missing: ${phrase}`);
-}
+for (const phrase of ["saved.steps.at(-1).id, \"step-final\"", "Run must fail while the user-added visible completion check is absent.", "SKILL_VERIFY_FAILED", "Saving success checks never self-approves", "completes only after the added success check and original final verification both pass", 'data-submits="0"']) assert.ok(completionSmoke.includes(phrase), `Completion-check installed-extension proof missing: ${phrase}`);
 
 const sidepanel = await readFile("src/sidepanel.js", "utf8");
 assert.ok(sidepanel.includes('import "./skills-run-ui.js";'));
