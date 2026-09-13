@@ -75,6 +75,14 @@ jobs:
           name: watch-me-evidence
           path: artifacts/watch-me-smoke
           if-no-files-found: error
+      - name: Run post-v0.2 Watch Me recorder resilience installed-extension smoke test
+        run: npm run watch-me-resilience-smoke
+      - name: Upload Watch Me recorder resilience evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch-me-resilience-evidence
+          path: artifacts/watch-me-resilience-smoke
+          if-no-files-found: error
       - name: Run post-v0.2 Skill draft review installed-extension smoke test
         run: npm run skill-draft-review-smoke
       - name: Upload Skill draft review evidence

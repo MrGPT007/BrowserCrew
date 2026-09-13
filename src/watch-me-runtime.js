@@ -1,4 +1,5 @@
 import { createWatchSession, draftSkillFromWatchSession, recordWatchEvent, stopWatchSession } from "./watch-me-contract.js";
+import { installWatchPageRecorder, stopWatchPageRecorder } from "./watch-me-page-recorder.js";
 import { saveSkillDraft } from "./skills-runtime.js";
 
 const WATCH_STATE_KEY = "browsercrew.watchMe.v1";
@@ -26,6 +27,12 @@ function bindControlPort(port) {
 function bindEventPort(port) {
   const tabId = port.sender?.tab?.id;
   if (!Number.isInteger(tabId)) return;
+  getWatchState().then((state) => {
+    const active = state?.session?.status === "watching" && state.session.approvedTabs?.includes(tabId);
+    try { port.postMessage({ type: "watch-session", active, sessionId: active ? state.session.id : null }); } catch {}
+  }).catch(() => {
+    try { port.postMessage({ type: "watch-session", active: false, sessionId: null }); } catch {}
+  });
   port.onMessage.addListener((message) => {
     if (message?.type !== "event") return;
     appendPageEvent(tabId, message.event).catch(() => {});
@@ -37,6 +44,7 @@ async function handleControl(message) {
     case "start": return startWatching(message.tab);
     case "pause": return setWatchStatus("paused");
     case "resume": return resumeWatching();
+    case "markWait": return markWaitForText(message.visibleText);
     case "stop": return finishWatching(message.draft || {});
     case "get": return { ok: true, state: await getWatchState() };
     case "discard": await chrome.storage.local.remove(WATCH_STATE_KEY); return { ok: true, state: null };
@@ -53,12 +61,7 @@ export async function startWatching(tab) {
   const existing = await getWatchState();
   if (existing?.session?.status === "watching") throw coded("WATCH_ALREADY_RUNNING", "BrowserCrew is already watching a demonstration. Stop it before starting another one.");
 
-  const session = createWatchSession({
-    id: crypto.randomUUID(),
-    tabId: tab.id,
-    origin: url.origin,
-    startedAt: new Date().toISOString()
-  });
+  const session = createWatchSession({ id: crypto.randomUUID(), tabId: tab.id, origin: url.origin, startedAt: new Date().toISOString() });
   const state = { schemaVersion: 1, session, tabTitle: String(tab.title || "Current page").slice(0, 160), updatedAt: new Date().toISOString() };
   await persistWatchState(state);
   await installPageRecorder(tab.id);
@@ -97,10 +100,29 @@ export async function finishWatching(draftInput = {}) {
     description: String(draftInput.description || "A draft browser job recorded with Watch me do it. Review every step before approving it.").slice(0, 600),
     createdAt: new Date().toISOString()
   });
-  await saveSkillDraft(draft);
-  const next = { ...state, session, draftRef: { id: draft.id, version: draft.version }, updatedAt: new Date().toISOString() };
+  const saved = await saveSkillDraft(draft);
+  const savedDraft = saved.skill || draft;
+  const next = { ...state, session, draftRef: { id: savedDraft.id, version: savedDraft.version }, updatedAt: new Date().toISOString() };
   await persistWatchState(next);
-  return { ok: true, state: next, draft };
+  return { ok: true, state: next, draft: savedDraft };
+}
+
+export async function markWaitForText(visibleText) {
+  const state = await requireWatchState();
+  if (state.session.status !== "watching") throw coded("WATCH_NOT_RUNNING", "Resume watching before adding a wait condition.");
+  const text = String(visibleText || "").replace(/\s+/g, " ").trim().slice(0, 160);
+  if (!text) throw coded("WATCH_WAIT_TEXT_REQUIRED", "Enter a short visible status or heading to wait for.");
+  const tabId = state.session.approvedTabs[0];
+  const expectedOrigin = state.session.approvedOrigins[0];
+  const observation = await verifyCompletionText(tabId, expectedOrigin, text);
+  if (!observation.visible) throw coded("WATCH_WAIT_TEXT_NOT_VISIBLE", "That text is not visible on the watched page yet. Wait until it appears, then add the wait condition.");
+  return appendPageEvent(tabId, {
+    kind: "waitFor",
+    origin: expectedOrigin,
+    pageUrl: observation.url,
+    occurredAt: new Date().toISOString(),
+    expect: { visibleText: text }
+  });
 }
 
 export async function appendPageEvent(tabId, rawEvent) {
@@ -108,12 +130,7 @@ export async function appendPageEvent(tabId, rawEvent) {
   if (state.session.status !== "watching") return { ok: false, ignored: true };
   if (!state.session.approvedTabs.includes(tabId)) throw coded("WATCH_WRONG_TAB", "BrowserCrew ignored an event from a tab you did not approve.");
 
-  const event = {
-    ...rawEvent,
-    id: rawEvent?.id || `step-${String(state.session.events.length + 1).padStart(3, "0")}`,
-    tabId,
-    occurredAt: rawEvent?.occurredAt || new Date().toISOString()
-  };
+  const event = { ...rawEvent, id: rawEvent?.id || `step-${String(state.session.events.length + 1).padStart(3, "0")}`, tabId, occurredAt: rawEvent?.occurredAt || new Date().toISOString() };
   const session = recordWatchEvent(state.session, event);
   const next = { ...state, session, updatedAt: new Date().toISOString() };
   await persistWatchState(next);
@@ -139,9 +156,7 @@ async function handleNavigation(tabId, href) {
   }
 
   const last = state.session.events.at(-1);
-  if (last?.kind !== "navigate" || last.pageUrl !== href) {
-    await appendPageEvent(tabId, { kind: "navigate", origin: url.origin, pageUrl: href, url: href });
-  }
+  if (last?.kind !== "navigate" || last.pageUrl !== href) await appendPageEvent(tabId, { kind: "navigate", origin: url.origin, pageUrl: href, url: href });
   await installPageRecorder(tabId).catch(() => {});
 }
 
@@ -165,106 +180,26 @@ async function resumeWatching() {
   return { ok: true, state: next };
 }
 
-async function verifyCompletionText(tabId, expectedOrigin, completionText) {
+async function verifyCompletionText(tabId, expectedOrigin, visibleText) {
   const tab = await chrome.tabs.get(tabId);
   if (!tab?.url || new URL(tab.url).origin !== expectedOrigin) throw coded("WATCH_SCOPE_CHANGED", "The watched tab is no longer on the approved website. Start a new recording or review the new scope first.");
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId },
     func: (expected) => {
-      const visibleText = String(document.body?.innerText || "").replace(/\s+/g, " ").trim();
-      return { visible: visibleText.includes(expected), url: location.href };
+      const bodyText = String(document.body?.innerText || "").replace(/\s+/g, " ").trim();
+      return { visible: bodyText.includes(expected), url: location.href };
     },
-    args: [completionText]
+    args: [visibleText]
   });
   return { visible: result?.visible === true, url: result?.url || tab.url };
 }
 
 async function installPageRecorder(tabId) {
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => {
-      const KEY = "__browserCrewWatchRecorderV1";
-      if (globalThis[KEY]?.active) return;
-      const port = chrome.runtime.connect({ name: "browsercrew-watch-events" });
-      const clean = (value, max = 180) => String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
-      const describe = (element) => {
-        if (!(element instanceof Element)) return {};
-        const labelElement = element.id ? document.querySelector(`label[for="${CSS.escape(element.id)}"]`) : null;
-        const role = clean(element.getAttribute("role") || inferRole(element), 80);
-        return {
-          role,
-          label: clean(element.getAttribute("aria-label") || labelElement?.innerText || element.innerText || element.getAttribute("title") || element.getAttribute("placeholder"), 160),
-          ariaLabel: clean(element.getAttribute("aria-label"), 160),
-          name: clean(element.getAttribute("name"), 120),
-          id: clean(element.id, 120),
-          testId: clean(element.getAttribute("data-testid"), 120),
-          type: clean(element.getAttribute("type"), 40),
-          autocomplete: clean(element.getAttribute("autocomplete"), 80),
-          placeholder: clean(element.getAttribute("placeholder"), 160)
-        };
-      };
-      const inferRole = (element) => {
-        const tag = element.tagName?.toLowerCase();
-        if (tag === "button") return "button";
-        if (tag === "a") return "link";
-        if (tag === "select") return "combobox";
-        if (tag === "textarea") return "textbox";
-        if (tag === "input") {
-          const type = (element.getAttribute("type") || "text").toLowerCase();
-          if (["checkbox", "radio"].includes(type)) return type;
-          if (["button", "submit", "reset"].includes(type)) return "button";
-          return "textbox";
-        }
-        return "";
-      };
-      const send = (event) => {
-        try {
-          port.postMessage({ type: "event", event: { ...event, origin: location.origin, pageUrl: location.href, occurredAt: new Date().toISOString() } });
-        } catch {}
-      };
-      const editable = (element) => element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement || element?.isContentEditable;
-      const onClick = (event) => {
-        const target = event.target?.closest?.("button,a,[role='button'],[role='link'],input,select,textarea,[contenteditable='true']") || event.target;
-        if (!(target instanceof Element) || editable(target)) return;
-        const description = describe(target);
-        if (!description.role && !description.label && !description.id && !description.testId) return;
-        send({ kind: "click", target: description });
-      };
-      const onChange = (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
-        const description = describe(target);
-        if (target instanceof HTMLSelectElement) {
-          // Deliberately do not transmit the selected literal. The skill editor
-          // turns demonstrated values into runtime inputs, including selects.
-          send({ kind: "select", target: description, variableName: clean(target.name || target.id || "selection", 60) });
-          return;
-        }
-        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable) {
-          // Never send the typed value across the extension boundary.
-          send({ kind: "type", target: description, variableName: clean(target.getAttribute("name") || target.id || target.getAttribute("aria-label") || "input", 60) });
-        }
-      };
-      document.addEventListener("click", onClick, true);
-      document.addEventListener("change", onChange, true);
-      globalThis[KEY] = {
-        active: true,
-        stop() {
-          document.removeEventListener("click", onClick, true);
-          document.removeEventListener("change", onChange, true);
-          try { port.disconnect(); } catch {}
-          this.active = false;
-        }
-      };
-    }
-  });
+  await chrome.scripting.executeScript({ target: { tabId }, func: installWatchPageRecorder });
 }
 
 async function uninstallPageRecorder(tabId) {
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => { try { globalThis.__browserCrewWatchRecorderV1?.stop?.(); } catch {} }
-  });
+  await chrome.scripting.executeScript({ target: { tabId }, func: stopWatchPageRecorder });
 }
 
 async function getWatchState() {

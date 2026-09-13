@@ -35,6 +35,7 @@ export function sanitizeWatchEvent(rawEvent, session) {
   if (!rawEvent || !WATCH_ME_EVENT_KINDS.includes(rawEvent.kind)) throw new Error("Unsupported Watch Me event.");
   if (!session.approvedTabs.includes(rawEvent.tabId)) throw new Error("Watch Me event came from an unapproved tab.");
   if (!session.approvedOrigins.includes(rawEvent.origin)) throw new Error("Watch Me paused because the workflow left the approved site scope.");
+  if (["type", "select"].includes(rawEvent.kind) && String(rawEvent.target?.type || "").toLowerCase() === "hidden") return null;
 
   const base = {
     id: rawEvent.id,
@@ -51,13 +52,7 @@ export function sanitizeWatchEvent(rawEvent, session) {
     const variableName = normalizeVariableName(rawEvent.variableName || deriveVariableName(rawEvent.target || {}, session.events.length + 1), session.events.length + 1);
     const type = inputTypeForEvent(rawEvent);
     base.value = `{{input.${variableName}}}`;
-    base.input = {
-      name: variableName,
-      type,
-      required: true,
-      secret: sensitivity.secret,
-      label: sensitivity.label
-    };
+    base.input = { name: variableName, type, required: true, secret: sensitivity.secret, label: sensitivity.label };
     base.recordedLiteral = false;
     if (sensitivity.secret) base.redaction = "secret_value_never_recorded";
   } else if (rawEvent.kind === "navigate") {
@@ -65,7 +60,9 @@ export function sanitizeWatchEvent(rawEvent, session) {
   } else if (rawEvent.kind === "waitFor" || rawEvent.kind === "verify") {
     base.expect = sanitizeExpectation(rawEvent.expect);
   } else if (rawEvent.kind === "download") {
-    base.download = { userInitiated: true, expectedUrlOrigin: rawEvent.origin };
+    const expectedUrlOrigin = rawEvent.downloadOrigin || rawEvent.origin;
+    if (!session.approvedOrigins.includes(expectedUrlOrigin)) throw new Error("Watch Me ignored a download that left the approved site scope.");
+    base.download = { userInitiated: true, expectedUrlOrigin };
   }
 
   return base;
@@ -85,12 +82,7 @@ export function draftSkillFromWatchSession(session, { skillId, version = "0.1.0"
   const inputs = {};
   const steps = session.events.map((event, index) => {
     if (event.input) inputs[event.input.name] = event.input;
-    const step = {
-      id: event.id || `step-${String(index + 1).padStart(2, "0")}`,
-      kind: event.kind,
-      purpose: humanPurpose(event),
-      origin: event.origin
-    };
+    const step = { id: event.id || `step-${String(index + 1).padStart(2, "0")}`, kind: event.kind, purpose: humanPurpose(event), origin: event.origin };
     if (event.target) step.target = event.target;
     if (event.value !== undefined) step.value = event.value;
     if (event.url) step.url = event.url;
@@ -112,17 +104,9 @@ export function draftSkillFromWatchSession(session, { skillId, version = "0.1.0"
     dataDestinations: [],
     budgets: { maxSteps: Math.max(10, steps.length * 3), maxMinutes: 30 },
     steps,
-    completionCriteria: [{
-      claim: "The demonstrated workflow reached its user-reviewed final state.",
-      verification: "Re-observe the final page/resource and require the reviewed completion check before reporting success."
-    }],
+    completionCriteria: [{ claim: "The demonstrated workflow reached its user-reviewed final state.", verification: "Re-observe the final page/resource and require the reviewed completion check before reporting success." }],
     recovery: { retryWrites: false, reconcileUnknownWrites: true },
-    provenance: {
-      source: "watch_me_demonstration",
-      sessionId: session.id,
-      createdAt: createdAt || session.stoppedAt,
-      eventCount: session.events.length
-    }
+    provenance: { source: "watch_me_demonstration", sessionId: session.id, createdAt: createdAt || session.stoppedAt, eventCount: session.events.length }
   };
 
   const validation = validateSkill(draft);
@@ -147,17 +131,9 @@ function inputTypeForEvent(event) {
 function sanitizeTarget(target) {
   if (!target || typeof target !== "object") return undefined;
   const result = {};
-  for (const [key, value] of Object.entries({
-    role: target.role,
-    label: target.label,
-    ariaLabel: target.ariaLabel,
-    name: target.name,
-    id: target.id,
-    testId: target.testId,
-    type: target.type,
-    autocomplete: target.autocomplete,
-    placeholder: target.placeholder
-  })) if (typeof value === "string" && value.trim()) result[key] = value.slice(0, 200);
+  for (const [key, value] of Object.entries({ role: target.role, label: target.label, ariaLabel: target.ariaLabel, name: target.name, id: target.id, testId: target.testId, type: target.type, autocomplete: target.autocomplete, placeholder: target.placeholder })) {
+    if (typeof value === "string" && value.trim()) result[key] = value.slice(0, 200);
+  }
   if (!result.role && !result.label && !result.ariaLabel && !result.id && !result.testId) return undefined;
   return result;
 }
@@ -165,9 +141,7 @@ function sanitizeTarget(target) {
 function sanitizeExpectation(expect) {
   if (!expect || typeof expect !== "object") throw new Error("Wait/verify event requires an expectation.");
   const out = {};
-  for (const key of ["visibleText", "urlIncludes", "role", "label", "state"]) {
-    if (typeof expect[key] === "string" && expect[key].trim()) out[key] = expect[key].slice(0, 300);
-  }
+  for (const key of ["visibleText", "urlIncludes", "role", "label", "state"]) if (typeof expect[key] === "string" && expect[key].trim()) out[key] = expect[key].slice(0, 300);
   if (!Object.keys(out).length) throw new Error("Expectation needs a bounded observable condition.");
   return out;
 }
@@ -215,7 +189,5 @@ function humanPurpose(event) {
 }
 
 function assertWatchSession(session) {
-  if (!session || session.schemaVersion !== WATCH_ME_SCHEMA_VERSION || !Array.isArray(session.approvedTabs) || !Array.isArray(session.approvedOrigins) || !Array.isArray(session.events)) {
-    throw new Error("Invalid Watch Me session.");
-  }
+  if (!session || session.schemaVersion !== WATCH_ME_SCHEMA_VERSION || !Array.isArray(session.approvedTabs) || !Array.isArray(session.approvedOrigins) || !Array.isArray(session.events)) throw new Error("Invalid Watch Me session.");
 }

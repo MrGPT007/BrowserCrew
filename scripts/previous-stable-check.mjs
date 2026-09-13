@@ -21,6 +21,7 @@ const targets = [
   "c5-smoke.mjs",
   "workspace-stop-smoke.mjs",
   "watch-me-smoke.mjs",
+  "watch-me-resilience-smoke.mjs",
   "skill-draft-review-smoke.mjs",
   "skill-library-lifecycle-smoke.mjs",
   "skill-portable-smoke.mjs",
@@ -56,6 +57,8 @@ for (const phrase of [
   "npm run w1-w3-adversarial-smoke",
   "npm run watch-me-smoke",
   "watch-me-evidence",
+  "npm run watch-me-resilience-smoke",
+  "watch-me-resilience-evidence",
   "npm run skill-draft-review-smoke",
   "skill-draft-review-evidence",
   "npm run skill-library-lifecycle-smoke",
@@ -70,6 +73,7 @@ const pkg = JSON.parse(await readFile("package.json", "utf8"));
 if (pkg.scripts?.["previous-stable-check"] !== "node scripts/previous-stable-check.mjs") throw new Error("previous-stable-check script must stay wired.");
 if (pkg.scripts?.["previous-stable-smoke"] !== "node scripts/previous-stable-runner.mjs") throw new Error("previous-stable-smoke script must stay wired.");
 if (pkg.scripts?.["watch-me-smoke"] !== "node scripts/watch-me-smoke.mjs") throw new Error("watch-me-smoke must stay wired for current and previous-stable browser coverage.");
+if (pkg.scripts?.["watch-me-resilience-smoke"] !== "node scripts/watch-me-resilience-smoke.mjs") throw new Error("watch-me-resilience-smoke must stay wired for current and previous-stable browser coverage.");
 if (pkg.scripts?.["skill-draft-review-smoke"] !== "node scripts/skill-draft-review-smoke.mjs") throw new Error("skill-draft-review-smoke must stay wired for current and previous-stable browser coverage.");
 if (pkg.scripts?.["skill-library-lifecycle-smoke"] !== "node scripts/skill-library-lifecycle-smoke.mjs") throw new Error("skill-library-lifecycle-smoke must stay wired for current and previous-stable browser coverage.");
 if (pkg.scripts?.["skill-portable-smoke"] !== "node scripts/skill-portable-smoke.mjs") throw new Error("skill-portable-smoke must stay wired for current and previous-stable browser coverage.");
