@@ -381,9 +381,6 @@ async function onAlarm(alarm) {
     const schedule = schedules.find((item) => item.id === scheduleId);
     if (!schedule?.enabled) return;
 
-    const duplicate = (await listScheduleRuns(scheduleId)).find((run) => run.scheduledFor === scheduledFor);
-    if (duplicate) return;
-
     const missed = decideMissedRun(schedule, { scheduledTime, firedAt });
     const receipt = {
       id: crypto.randomUUID(),
@@ -399,34 +396,10 @@ async function onAlarm(alarm) {
       reason: null,
       taskId: null
     };
-    await appendRunReceipt(receipt);
 
-    if (missed.action === "skip") {
-      await settleWithoutDispatch(receipt, "skipped", missed.reason);
-      await advanceSchedule(scheduleId, firedAt);
-      return;
-    }
-    if (missed.action === "review") {
-      receipt.reviewRequestedAt = new Date().toISOString();
-      await settleWithoutDispatch(receipt, "needs_review", missed.reason);
-      await advanceSchedule(scheduleId, firedAt);
-      return;
-    }
-
-    const priorRuns = await listScheduleRuns(scheduleId);
-    const activeRun = priorRuns.some((run) => run.id !== receipt.id && ["checking", "running"].includes(run.status));
-    const queuedRun = priorRuns.some((run) => run.id !== receipt.id && run.status === "queued");
-    const concurrency = decideScheduleConcurrency(schedule, { activeRun, queuedRun });
-    if (concurrency.action === "skip") {
-      await settleWithoutDispatch(receipt, "skipped", concurrency.reason);
-      await advanceSchedule(scheduleId, firedAt);
-      return;
-    }
-    if (concurrency.action === "queue") {
-      receipt.status = "queued";
-      receipt.reason = concurrency.reason;
-      receipt.queuedAt = new Date().toISOString();
-      await updateRunReceipt(receipt);
+    const claim = await claimScheduledOccurrence(schedule, receipt, missed);
+    if (claim.action === "duplicate") return;
+    if (claim.action === "advance") {
       await advanceSchedule(scheduleId, firedAt);
       return;
     }
@@ -437,6 +410,59 @@ async function onAlarm(alarm) {
       await advanceSchedule(scheduleId, firedAt);
       await drainQueuedRun(scheduleId);
     }
+  });
+}
+
+async function claimScheduledOccurrence(schedule, receipt, missed) {
+  return withScheduleRunHistoryMutation(async () => {
+    const data = await chrome.storage.local.get([SCHEDULE_RUNS_KEY]);
+    const runs = Array.isArray(data[SCHEDULE_RUNS_KEY]) ? data[SCHEDULE_RUNS_KEY] : [];
+    const duplicate = runs.some((run) => run.scheduleId === receipt.scheduleId && run.scheduledFor === receipt.scheduledFor);
+    if (duplicate) return { action: "duplicate" };
+
+    const persistClaim = async () => {
+      runs.unshift(structuredClone(receipt));
+      await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.slice(0, MAX_RUN_RECEIPTS) });
+    };
+
+    if (missed.action === "skip") {
+      receipt.status = "skipped";
+      receipt.reason = missed.reason;
+      receipt.completedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "advance" };
+    }
+    if (missed.action === "review") {
+      receipt.status = "needs_review";
+      receipt.reason = missed.reason;
+      receipt.reviewRequestedAt = new Date().toISOString();
+      receipt.completedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "advance" };
+    }
+
+    const activeRun = runs.some((run) => run.scheduleId === receipt.scheduleId && ["checking", "running"].includes(run.status));
+    const queuedRun = runs.some((run) => run.scheduleId === receipt.scheduleId && run.status === "queued");
+    const concurrency = decideScheduleConcurrency(schedule, { activeRun, queuedRun });
+    if (concurrency.action === "skip") {
+      receipt.status = "skipped";
+      receipt.reason = concurrency.reason;
+      receipt.completedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "advance" };
+    }
+    if (concurrency.action === "queue") {
+      receipt.status = "queued";
+      receipt.reason = concurrency.reason;
+      receipt.queuedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "advance" };
+    }
+
+    receipt.status = "checking";
+    receipt.reason = null;
+    await persistClaim();
+    return { action: "dispatch" };
   });
 }
 

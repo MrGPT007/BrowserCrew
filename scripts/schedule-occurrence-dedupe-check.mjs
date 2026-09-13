@@ -63,6 +63,10 @@ const firstDistinctConcurrencyReadEntered = new Promise((resolve) => { firstDist
 const releaseDistinctConcurrencyReads = new Promise((resolve) => { releaseDistinctConcurrencyReadsResolve = resolve; });
 const clone = (value) => structuredClone(value);
 
+function isAtomicHistoryRead(keys) {
+  return Array.isArray(keys) && keys.length === 1 && keys[0] === SCHEDULE_RUNS_KEY;
+}
+
 function eventBucket(name) {
   const bucket = listeners[name];
   return {
@@ -83,21 +87,25 @@ globalThis.chrome = {
   storage: {
     local: {
       async get(keys) {
-        if (keys === SCHEDULE_RUNS_KEY && holdFirstRunRead) {
+        if (holdFirstRunRead && (keys === SCHEDULE_RUNS_KEY || isAtomicHistoryRead(keys))) {
           runReadCount += 1;
           if (runReadCount === 1) {
             firstRunReadResolve();
             await releaseFirstRunRead;
           }
         }
+        if (distinctRunReadBarrierEnabled && isAtomicHistoryRead(keys)) {
+          distinctRunReadCount += 1;
+          if (distinctRunReadCount === 1) {
+            firstDistinctConcurrencyReadResolve();
+            await releaseDistinctConcurrencyReads;
+            distinctRunReadBarrierEnabled = false;
+          }
+        }
         if (keys === SCHEDULE_RUNS_KEY && distinctRunReadBarrierEnabled) {
           distinctRunReadCount += 1;
           if (distinctRunReadCount === 3) {
             firstDistinctConcurrencyReadResolve();
-            await releaseDistinctConcurrencyReads;
-          } else if (distinctRunReadCount === 6) {
-            distinctRunReadBarrierEnabled = false;
-            releaseDistinctConcurrencyReadsResolve();
             await releaseDistinctConcurrencyReads;
           }
         }
@@ -165,7 +173,7 @@ assert.equal(taskCalls.length, 1, "Two simultaneous deliveries of one scheduled 
 assert.equal(dispatchCalls.filter((call) => call.mode === "preflight").length, 1, "Duplicate occurrence delivery must not run a second preflight.");
 
 const distinctTaskBaseline = taskCalls.length;
-const distinctDispatchBaseline = dispatchCalls.length;
+const distinctDispatchBaseline = dispatchCalls.filter((call) => call.mode === "preflight").length;
 const distinctBaseTime = Date.now();
 const firstDistinctAlarm = { name: `browsercrew.schedule.${schedule.id}`, scheduledTime: distinctBaseTime };
 const secondDistinctAlarm = { name: `browsercrew.schedule.${schedule.id}`, scheduledTime: distinctBaseTime + 1 };
@@ -174,6 +182,8 @@ distinctRunReadCount = 0;
 const firstDistinctDelivery = alarmListener(clone(firstDistinctAlarm));
 await firstDistinctConcurrencyReadEntered;
 const secondDistinctDelivery = alarmListener(clone(secondDistinctAlarm));
+await new Promise((resolve) => setImmediate(resolve));
+releaseDistinctConcurrencyReadsResolve();
 await Promise.all([firstDistinctDelivery, secondDistinctDelivery]);
 
 const distinctScheduledFor = new Set([
@@ -199,8 +209,11 @@ for (const phrase of [
   "const occurrenceLocks = new Map()",
   "return withOccurrenceLock(JSON.stringify([scheduleId, scheduledFor])",
   "const previous = occurrenceLocks.get(key) || Promise.resolve()",
-  "if (occurrenceLocks.get(key) === current) occurrenceLocks.delete(key)"
-]) assert.ok(runtimeSource.includes(phrase), `Scheduler same-occurrence serialization contract missing: ${phrase}`);
+  "if (occurrenceLocks.get(key) === current) occurrenceLocks.delete(key)",
+  "async function claimScheduledOccurrence(schedule, receipt, missed)",
+  "const claim = await claimScheduledOccurrence(schedule, receipt, missed)",
+  "chrome.storage.local.get([SCHEDULE_RUNS_KEY])"
+]) assert.ok(runtimeSource.includes(phrase), `Scheduler occurrence serialization contract missing: ${phrase}`);
 
 const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
 assert.equal((manifest.permissions || []).includes("alarms"), false, "Occurrence dedupe hardening must not activate scheduling in the frozen v0.2 manifest.");
