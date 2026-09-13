@@ -24,6 +24,7 @@ const MAX_RUN_RECEIPTS = 500;
 const ALARM_PREFIX = "browsercrew.schedule.";
 const occurrenceLocks = new Map();
 let runHistoryMutation = null;
+let scheduleStateMutation = null;
 let booted = false;
 let bootPromise = null;
 let dispatchScheduledRun = null;
@@ -117,28 +118,40 @@ export async function saveSchedule(input) {
     resourceFresh: true
   });
 
-  const schedules = await listSchedules();
-  const index = schedules.findIndex((item) => item.id === schedule.id);
-  if (index < 0 && schedules.length >= MAX_SCHEDULES) throw coded("SCHEDULE_LIMIT", `BrowserCrew can keep up to ${MAX_SCHEDULES} schedules in this build.`);
-  if (index >= 0) await assertScheduleEditAllowedWithGrant(schedules[index], schedule);
+  const validationSchedules = await listSchedules();
+  const validationIndex = validationSchedules.findIndex((item) => item.id === schedule.id);
+  if (validationIndex < 0 && validationSchedules.length >= MAX_SCHEDULES) throw coded("SCHEDULE_LIMIT", `BrowserCrew can keep up to ${MAX_SCHEDULES} schedules in this build.`);
+  const existingSnapshot = validationIndex >= 0 ? structuredClone(validationSchedules[validationIndex]) : null;
+  if (existingSnapshot) await assertScheduleEditAllowedWithGrant(existingSnapshot, schedule);
   // saveDraft can neither add nor replace authority references. The dedicated
   // grant lifecycle owns these refs; ordinary edits preserve only trusted stored refs.
-  schedule.grantRefs = index >= 0 && Array.isArray(schedules[index].grantRefs) ? structuredClone(schedules[index].grantRefs) : [];
-  if (index >= 0) preservePreparedMetadata(schedule, schedules[index], skillResult.skill);
+  schedule.grantRefs = existingSnapshot && Array.isArray(existingSnapshot.grantRefs) ? structuredClone(existingSnapshot.grantRefs) : [];
+  if (existingSnapshot) preservePreparedMetadata(schedule, existingSnapshot, skillResult.skill);
   if (schedule.enabled) {
     assertPreparedScheduleMetadataForSkill(schedule, skillResult.skill);
     await resolveActiveScheduleGrant(schedule.grantRefs, { schedule, skill: skillResult.skill });
   }
-  const now = new Date().toISOString();
-  schedule.createdAt = index >= 0 ? schedules[index].createdAt : schedule.createdAt || now;
-  schedule.lastRunAt = index >= 0 ? schedules[index].lastRunAt ?? null : null;
-  schedule.updatedAt = now;
-  schedule.nextRunAt = schedule.enabled ? new Date(nextRun(schedule)).toISOString() : null;
-  if (index >= 0) schedules[index] = schedule;
-  else schedules.push(schedule);
-  await persistSchedules(schedules);
-  await syncOneAlarm(schedule);
-  return { ok: true, schedule };
+
+  const saved = await withScheduleStateMutation(async () => {
+    const schedules = await listSchedules();
+    const index = schedules.findIndex((item) => item.id === schedule.id);
+    const current = index >= 0 ? schedules[index] : null;
+    assertScheduleTargetUnchanged(current, existingSnapshot);
+    if (index < 0 && schedules.length >= MAX_SCHEDULES) throw coded("SCHEDULE_LIMIT", `BrowserCrew can keep up to ${MAX_SCHEDULES} schedules in this build.`);
+
+    const next = structuredClone(schedule);
+    const now = new Date().toISOString();
+    next.createdAt = current ? current.createdAt : next.createdAt || now;
+    next.lastRunAt = current ? current.lastRunAt ?? null : null;
+    next.updatedAt = now;
+    next.nextRunAt = next.enabled ? new Date(nextRun(next)).toISOString() : null;
+    if (index >= 0) schedules[index] = next;
+    else schedules.push(next);
+    await persistSchedules(schedules);
+    await syncOneAlarm(next);
+    return structuredClone(next);
+  });
+  return { ok: true, schedule: saved };
 }
 
 export async function setPreparedScheduleBinding(scheduleId, pageUrl) {
@@ -146,7 +159,7 @@ export async function setPreparedScheduleBinding(scheduleId, pageUrl) {
   const schedules = await listSchedules();
   const index = schedules.findIndex((item) => item.id === scheduleId);
   if (index < 0) throw coded("SCHEDULE_NOT_FOUND", "That prepared schedule could not be found.");
-  const existing = schedules[index];
+  const existing = structuredClone(schedules[index]);
   if (existing.enabled) throw coded("SCHEDULE_BINDING_PREPARED_ONLY", "Pause this schedule before changing its reviewed starting page.");
   if (Array.isArray(existing.grantRefs) && existing.grantRefs.length) {
     throw coded("SCHEDULE_BINDING_ACTIVE_GRANT_PRESENT", "This schedule already references durable authority. Revoke that permission before changing its starting page.");
@@ -155,47 +168,78 @@ export async function setPreparedScheduleBinding(scheduleId, pageUrl) {
   const skillResult = await getSkillVersion(existing.skillRef.id, existing.skillRef.version);
   if (!skillResult.ok) throw coded("SCHEDULE_SKILL_NOT_FOUND", "The exact approved Skill version for this schedule is no longer available.");
   const metadata = createPreparedScheduleMetadata({ skill: skillResult.skill, pageUrl });
-  const schedule = {
+  const reviewed = {
     ...existing,
     startResource: metadata.startResource,
     authorityPlan: metadata.authorityPlan,
     grantRefs: [],
     updatedAt: new Date().toISOString()
   };
-  assertPreparedScheduleMetadataForSkill(schedule, skillResult.skill);
-  schedules[index] = schedule;
-  await persistSchedules(schedules);
+  assertPreparedScheduleMetadataForSkill(reviewed, skillResult.skill);
+
+  const schedule = await withScheduleStateMutation(async () => {
+    const latest = await listSchedules();
+    const latestIndex = latest.findIndex((item) => item.id === scheduleId);
+    const current = latestIndex >= 0 ? latest[latestIndex] : null;
+    assertScheduleTargetUnchanged(current, existing);
+    latest[latestIndex] = structuredClone(reviewed);
+    await persistSchedules(latest);
+    return structuredClone(reviewed);
+  });
   return { ok: true, schedule };
 }
 
 export async function setScheduleEnabled(scheduleId, enabled) {
   const desired = Boolean(enabled);
   if (desired) requireAlarmsApi();
-  const schedules = await listSchedules();
-  const index = schedules.findIndex((item) => item.id === scheduleId);
-  if (index < 0) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
-  if (desired) {
-    const exact = schedules[index];
-    const skillResult = await getSkillVersion(exact.skillRef.id, exact.skillRef.version);
-    if (!skillResult.ok) throw coded("SCHEDULE_SKILL_NOT_FOUND", "The exact approved Skill version for this schedule is no longer available.");
-    assertPreparedScheduleMetadataForSkill(exact, skillResult.skill);
-    await resolveActiveScheduleGrant(exact.grantRefs, { schedule: exact, skill: skillResult.skill });
+
+  if (!desired) {
+    const schedule = await withScheduleStateMutation(async () => {
+      const schedules = await listSchedules();
+      const index = schedules.findIndex((item) => item.id === scheduleId);
+      if (index < 0) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
+      const next = { ...schedules[index], enabled: false, updatedAt: new Date().toISOString(), nextRunAt: null };
+      schedules[index] = next;
+      await persistSchedules(schedules);
+      await syncOneAlarm(next);
+      return structuredClone(next);
+    });
+    return { ok: true, schedule };
   }
-  const schedule = { ...schedules[index], enabled: desired, updatedAt: new Date().toISOString() };
-  schedule.nextRunAt = schedule.enabled ? new Date(nextRun(schedule)).toISOString() : null;
-  schedules[index] = schedule;
-  await persistSchedules(schedules);
-  await syncOneAlarm(schedule);
+
+  const validationSchedules = await listSchedules();
+  const validationIndex = validationSchedules.findIndex((item) => item.id === scheduleId);
+  if (validationIndex < 0) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
+  const existing = structuredClone(validationSchedules[validationIndex]);
+  const skillResult = await getSkillVersion(existing.skillRef.id, existing.skillRef.version);
+  if (!skillResult.ok) throw coded("SCHEDULE_SKILL_NOT_FOUND", "The exact approved Skill version for this schedule is no longer available.");
+  assertPreparedScheduleMetadataForSkill(existing, skillResult.skill);
+  await resolveActiveScheduleGrant(existing.grantRefs, { schedule: existing, skill: skillResult.skill });
+
+  const schedule = await withScheduleStateMutation(async () => {
+    const schedules = await listSchedules();
+    const index = schedules.findIndex((item) => item.id === scheduleId);
+    const current = index >= 0 ? schedules[index] : null;
+    assertScheduleTargetUnchanged(current, existing);
+    const next = { ...current, enabled: true, updatedAt: new Date().toISOString() };
+    next.nextRunAt = new Date(nextRun(next)).toISOString();
+    schedules[index] = next;
+    await persistSchedules(schedules);
+    await syncOneAlarm(next);
+    return structuredClone(next);
+  });
   return { ok: true, schedule };
 }
 
 export async function deleteSchedule(scheduleId) {
-  const schedules = await listSchedules();
-  const next = schedules.filter((item) => item.id !== scheduleId);
-  if (next.length === schedules.length) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
-  await revokeScheduleGrantsForDeletedSchedule(scheduleId);
-  await persistSchedules(next);
-  if (chrome.alarms?.clear) await chrome.alarms.clear(alarmName(scheduleId));
+  await withScheduleStateMutation(async () => {
+    const schedules = await listSchedules();
+    const next = schedules.filter((item) => item.id !== scheduleId);
+    if (next.length === schedules.length) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
+    await revokeScheduleGrantsForDeletedSchedule(scheduleId);
+    await persistSchedules(next);
+    if (chrome.alarms?.clear) await chrome.alarms.clear(alarmName(scheduleId));
+  });
   return { ok: true };
 }
 
@@ -262,12 +306,14 @@ export async function reviewMissedScheduleRun(runId, decision) {
 
 export async function reconcileScheduleAlarms() {
   requireAlarmsApi();
-  const schedules = await listSchedules();
-  const alarms = await chrome.alarms.getAll();
-  const changes = reconcileAlarmNames(schedules, alarms);
-  for (const name of changes.clear) await chrome.alarms.clear(name);
-  for (const schedule of schedules.filter((item) => item.enabled)) await syncOneAlarm(schedule);
-  return { ok: true, createdOrUpdated: schedules.filter((item) => item.enabled).length, cleared: changes.clear.length };
+  return withScheduleStateMutation(async () => {
+    const schedules = await listSchedules();
+    const alarms = await chrome.alarms.getAll();
+    const changes = reconcileAlarmNames(schedules, alarms);
+    for (const name of changes.clear) await chrome.alarms.clear(name);
+    for (const schedule of schedules.filter((item) => item.enabled)) await syncOneAlarm(schedule);
+    return { ok: true, createdOrUpdated: schedules.filter((item) => item.enabled).length, cleared: changes.clear.length };
+  });
 }
 
 async function syncOneAlarm(schedule) {
@@ -454,22 +500,24 @@ async function settleWithoutDispatch(receipt, status, reason) {
 }
 
 async function advanceSchedule(scheduleId, firedAt) {
-  const schedules = await listSchedules();
-  const index = schedules.findIndex((item) => item.id === scheduleId);
-  if (index < 0) return;
-  const schedule = { ...schedules[index], lastRunAt: new Date(firedAt).toISOString(), updatedAt: new Date().toISOString() };
-  if (schedule.recurrence.kind === "once") {
-    schedule.enabled = false;
-    schedule.nextRunAt = null;
-  } else if (["daily", "weekly"].includes(schedule.recurrence.kind)) {
-    schedule.nextRunAt = new Date(nextCalendarRun(schedule, firedAt + 1000)).toISOString();
-  } else {
-    const alarm = await chrome.alarms.get(alarmName(schedule.id));
-    schedule.nextRunAt = alarm?.scheduledTime ? new Date(alarm.scheduledTime).toISOString() : new Date(nextRun(schedule, firedAt + 1000)).toISOString();
-  }
-  schedules[index] = schedule;
-  await persistSchedules(schedules);
-  if (schedule.enabled && ["daily", "weekly"].includes(schedule.recurrence.kind)) await syncOneAlarm(schedule);
+  return withScheduleStateMutation(async () => {
+    const schedules = await listSchedules();
+    const index = schedules.findIndex((item) => item.id === scheduleId);
+    if (index < 0) return;
+    const schedule = { ...schedules[index], lastRunAt: new Date(firedAt).toISOString(), updatedAt: new Date().toISOString() };
+    if (schedule.recurrence.kind === "once") {
+      schedule.enabled = false;
+      schedule.nextRunAt = null;
+    } else if (["daily", "weekly"].includes(schedule.recurrence.kind)) {
+      schedule.nextRunAt = new Date(nextCalendarRun(schedule, firedAt + 1000)).toISOString();
+    } else {
+      const alarm = await chrome.alarms.get(alarmName(schedule.id));
+      schedule.nextRunAt = alarm?.scheduledTime ? new Date(alarm.scheduledTime).toISOString() : new Date(nextRun(schedule, firedAt + 1000)).toISOString();
+    }
+    schedules[index] = schedule;
+    await persistSchedules(schedules);
+    if (schedule.enabled && ["daily", "weekly"].includes(schedule.recurrence.kind)) await syncOneAlarm(schedule);
+  });
 }
 
 function nextRun(schedule, now = Date.now()) {
@@ -520,6 +568,23 @@ async function withRunHistoryMutation(work) {
   } finally {
     if (runHistoryMutation === current) runHistoryMutation = null;
   }
+}
+
+async function withScheduleStateMutation(work) {
+  const previous = scheduleStateMutation || Promise.resolve();
+  const current = previous.catch(() => {}).then(work);
+  scheduleStateMutation = current;
+  try {
+    return await current;
+  } finally {
+    if (scheduleStateMutation === current) scheduleStateMutation = null;
+  }
+}
+
+function assertScheduleTargetUnchanged(current, snapshot) {
+  if (current == null && snapshot == null) return;
+  if (current != null && snapshot != null && JSON.stringify(current) === JSON.stringify(snapshot)) return;
+  throw coded("SCHEDULE_CHANGED_RETRY", "This schedule changed while BrowserCrew was checking it. Review the latest schedule and try again.");
 }
 
 async function persistSchedules(schedules) {
