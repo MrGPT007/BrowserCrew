@@ -3,6 +3,7 @@ import {
   listScheduleRuns,
   listSchedules,
   reviewMissedScheduleRun,
+  scheduleExecutionSnapshot,
   setScheduleEnabled
 } from "./schedules-runtime.js";
 import { withScheduleRunHistoryMutation } from "./schedule-run-history-mutation.js";
@@ -44,6 +45,7 @@ export async function runScheduleNow(scheduleId) {
     schemaVersion: 1,
     scheduleId: schedule.id,
     skillRef: structuredClone(schedule.skillRef),
+    scheduleSnapshot: scheduleExecutionSnapshot(schedule),
     scheduledFor: now,
     firedAt: now,
     latenessMs: 0,
