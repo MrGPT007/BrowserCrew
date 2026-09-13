@@ -75,6 +75,14 @@ jobs:
           name: watch-me-evidence
           path: artifacts/watch-me-smoke
           if-no-files-found: error
+      - name: Run post-v0.2 Skill draft review installed-extension smoke test
+        run: npm run skill-draft-review-smoke
+      - name: Upload Skill draft review evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: skill-draft-review-evidence
+          path: artifacts/skill-draft-review-smoke
+          if-no-files-found: error
       - name: Run post-v0.2 missed schedule review installed-extension smoke test
         run: npm run schedule-review-smoke
       - name: Upload missed schedule review evidence

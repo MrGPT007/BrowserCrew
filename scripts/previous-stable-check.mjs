@@ -20,7 +20,8 @@ const targets = [
   "mcp-smoke.mjs",
   "c5-smoke.mjs",
   "workspace-stop-smoke.mjs",
-  "watch-me-smoke.mjs"
+  "watch-me-smoke.mjs",
+  "skill-draft-review-smoke.mjs"
 ];
 
 for (const file of ["scripts/previous-stable-runner.mjs", ".github/workflows/quality.yml", "docs/RELEASE-EVIDENCE-v0.2.md"]) await access(file);
@@ -53,13 +54,16 @@ for (const phrase of [
   "previous-stable-chrome-evidence",
   "npm run w1-w3-adversarial-smoke",
   "npm run watch-me-smoke",
-  "watch-me-evidence"
+  "watch-me-evidence",
+  "npm run skill-draft-review-smoke",
+  "skill-draft-review-evidence"
 ]) if (!workflow.includes(phrase)) throw new Error(`Quality workflow previous-stable contract missing: ${phrase}`);
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
 if (pkg.scripts?.["previous-stable-check"] !== "node scripts/previous-stable-check.mjs") throw new Error("previous-stable-check script must stay wired.");
 if (pkg.scripts?.["previous-stable-smoke"] !== "node scripts/previous-stable-runner.mjs") throw new Error("previous-stable-smoke script must stay wired.");
 if (pkg.scripts?.["watch-me-smoke"] !== "node scripts/watch-me-smoke.mjs") throw new Error("watch-me-smoke must stay wired for current and previous-stable browser coverage.");
+if (pkg.scripts?.["skill-draft-review-smoke"] !== "node scripts/skill-draft-review-smoke.mjs") throw new Error("skill-draft-review-smoke must stay wired for current and previous-stable browser coverage.");
 if (!String(pkg.scripts?.check || "").includes("previous-stable-check.mjs")) throw new Error("npm run check must include previous-stable contracts.");
 
 const evidence = await readFile("docs/RELEASE-EVIDENCE-v0.2.md", "utf8");

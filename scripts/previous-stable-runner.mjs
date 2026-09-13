@@ -30,6 +30,7 @@ const targets = [
   "c5-smoke.mjs",
   "workspace-stop-smoke.mjs",
   "watch-me-smoke.mjs",
+  "skill-draft-review-smoke.mjs",
   "schedule-review-smoke.mjs",
   "schedule-setup-smoke.mjs"
 ];
