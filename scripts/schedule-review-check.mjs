@@ -11,6 +11,17 @@ const alarmsApi = {
   async getAll() { return [...alarms.values()]; }
 };
 
+let concurrentReviewBarrier = null;
+let concurrentReviewBarrierRelease = null;
+let concurrentReviewReads = 0;
+let concurrentReviewBarrierEnabled = false;
+
+function armConcurrentReviewReadBarrier() {
+  concurrentReviewReads = 0;
+  concurrentReviewBarrierEnabled = true;
+  concurrentReviewBarrier = new Promise((resolve) => { concurrentReviewBarrierRelease = resolve; });
+}
+
 globalThis.chrome = {
   runtime: {
     onConnect: { addListener(listener) { listeners.connect.push(listener); } },
@@ -22,7 +33,17 @@ globalThis.chrome = {
       async get(keys) {
         if (keys == null) return Object.fromEntries(storage);
         const wanted = Array.isArray(keys) ? keys : typeof keys === "string" ? [keys] : Object.keys(keys);
-        return Object.fromEntries(wanted.filter((key) => storage.has(key)).map((key) => [key, structuredClone(storage.get(key))]));
+        const result = Object.fromEntries(wanted.filter((key) => storage.has(key)).map((key) => [key, structuredClone(storage.get(key))]));
+        if (concurrentReviewBarrierEnabled && wanted.length === 1 && wanted[0] === "browsercrew.scheduleRuns.v1") {
+          const gate = concurrentReviewBarrier;
+          concurrentReviewReads += 1;
+          if (concurrentReviewReads === 2) {
+            concurrentReviewBarrierEnabled = false;
+            concurrentReviewBarrierRelease();
+          }
+          await gate;
+        }
+        return result;
       },
       async set(values) {
         for (const [key, value] of Object.entries(values)) storage.set(key, structuredClone(value));
@@ -93,7 +114,7 @@ const missed = (id) => ({
 
 storage.set(SKILL_LIBRARY_KEY, [approvedSkill]);
 storage.set(SCHEDULES_KEY, [schedule]);
-storage.set(SCHEDULE_RUNS_KEY, [missed("skip-me"), missed("run-me")]);
+storage.set(SCHEDULE_RUNS_KEY, [missed("skip-me"), missed("run-me"), missed("race-me")]);
 
 const runtime = await import("../src/schedules-runtime.js");
 
@@ -201,6 +222,22 @@ await assert.rejects(
   runtime.reviewMissedScheduleRun("run-me", "run_once"),
   (error) => error?.code === "SCHEDULE_REVIEW_NOT_PENDING"
 );
+
+const dispatchBaseline = dispatchCalls.length;
+armConcurrentReviewReadBarrier();
+const concurrentReviews = await Promise.allSettled([
+  runtime.reviewMissedScheduleRun("race-me", "run_once"),
+  runtime.reviewMissedScheduleRun("race-me", "run_once")
+]);
+const fulfilledReviews = concurrentReviews.filter((result) => result.status === "fulfilled");
+const rejectedReviews = concurrentReviews.filter((result) => result.status === "rejected");
+assert.equal(fulfilledReviews.length, 1, "Concurrent reviewers must claim one missed receipt exactly once.");
+assert.equal(rejectedReviews.length, 1, "The second concurrent reviewer must fail closed after the receipt is claimed.");
+assert.equal(rejectedReviews[0].reason?.code, "SCHEDULE_REVIEW_NOT_PENDING", "The losing concurrent reviewer must observe that review is no longer pending.");
+assert.equal(dispatchCalls.length, dispatchBaseline + 2, "One claimed missed receipt may perform only one preflight and one task dispatch.");
+runs = (await chrome.storage.local.get(SCHEDULE_RUNS_KEY))[SCHEDULE_RUNS_KEY];
+assert.equal(runs.find((run) => run.id === "race-me")?.status, "completed", "The single claimed concurrent review must leave one completed durable receipt.");
+
 await assert.rejects(
   runtime.reviewMissedScheduleRun("skip-me", "anything"),
   (error) => error?.code === "SCHEDULE_REVIEW_DECISION_INVALID"
