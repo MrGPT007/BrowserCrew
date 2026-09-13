@@ -254,7 +254,7 @@ const fs = await import("node:fs/promises");
 const runtimeSource = await fs.readFile(new URL("../src/schedules-runtime.js", import.meta.url), "utf8");
 for (const phrase of [
   "const scheduledFor = new Date(scheduledTime).toISOString()",
-  "run.scheduledFor === scheduledFor",
+  "run.scheduledFor === receipt.scheduledFor",
   "if (duplicate) return",
   "next.lastRunAt = current ? current.lastRunAt ?? null : null",
   "assertScheduleTargetUnchanged(current, existingSnapshot)",
@@ -274,6 +274,6 @@ console.log("BrowserCrew schedule runtime restart, dedupe, preflight, task-contr
 async function consumeAndFire(scheduleId, scheduledTime) {
   const name = `browsercrew.schedule.${scheduleId}`;
   const current = alarms.get(name) || { name, scheduledTime };
-  if (!current.periodInMinutes) alarms.delete(name); // Chrome consumes one-shot alarms before delivery.
+  if (!current.periodInMinutes) alarms.delete(name);
   await alarmListener({ ...clone(current), name, scheduledTime });
 }
