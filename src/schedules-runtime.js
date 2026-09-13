@@ -15,6 +15,7 @@ import {
   resolveActiveScheduleGrant,
   revokeScheduleGrantsForDeletedSchedule
 } from "./schedule-grants-runtime.js";
+import { withScheduleStateMutation } from "./schedule-state-mutation.js";
 
 const SCHEDULES_KEY = "browsercrew.schedules.v1";
 const SCHEDULE_RUNS_KEY = "browsercrew.scheduleRuns.v1";
@@ -24,7 +25,6 @@ const MAX_RUN_RECEIPTS = 500;
 const ALARM_PREFIX = "browsercrew.schedule.";
 const occurrenceLocks = new Map();
 let runHistoryMutation = null;
-let scheduleStateMutation = null;
 let booted = false;
 let bootPromise = null;
 let dispatchScheduledRun = null;
@@ -236,7 +236,7 @@ export async function deleteSchedule(scheduleId) {
     const schedules = await listSchedules();
     const next = schedules.filter((item) => item.id !== scheduleId);
     if (next.length === schedules.length) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
-    await revokeScheduleGrantsForDeletedSchedule(scheduleId);
+    await revokeScheduleGrantsForDeletedSchedule(scheduleId, { scheduleStateLockHeld: true });
     await persistSchedules(next);
     if (chrome.alarms?.clear) await chrome.alarms.clear(alarmName(scheduleId));
   });
@@ -567,17 +567,6 @@ async function withRunHistoryMutation(work) {
     return await current;
   } finally {
     if (runHistoryMutation === current) runHistoryMutation = null;
-  }
-}
-
-async function withScheduleStateMutation(work) {
-  const previous = scheduleStateMutation || Promise.resolve();
-  const current = previous.catch(() => {}).then(work);
-  scheduleStateMutation = current;
-  try {
-    return await current;
-  } finally {
-    if (scheduleStateMutation === current) scheduleStateMutation = null;
   }
 }
 

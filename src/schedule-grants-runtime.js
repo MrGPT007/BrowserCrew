@@ -5,6 +5,7 @@ import {
   revokeScheduleGrant,
   validateScheduleGrant
 } from "./schedule-grants-contract.js";
+import { withScheduleStateMutation } from "./schedule-state-mutation.js";
 
 const SCHEDULES_KEY = "browsercrew.schedules.v1";
 const SCHEDULE_GRANTS_KEY = "browsercrew.scheduleGrants.v1";
@@ -36,56 +37,67 @@ export async function listScheduleGrants(scheduleId = null) {
 }
 
 export async function approveScheduleGrant(scheduleId, expiresAt) {
-  const now = new Date().toISOString();
-  const data = await chrome.storage.local.get([SCHEDULES_KEY, SCHEDULE_GRANTS_KEY]);
-  const schedules = Array.isArray(data[SCHEDULES_KEY]) ? data[SCHEDULES_KEY] : [];
-  const grants = Array.isArray(data[SCHEDULE_GRANTS_KEY]) ? data[SCHEDULE_GRANTS_KEY] : [];
-  const index = schedules.findIndex((item) => item.id === scheduleId);
-  if (index < 0) throw coded("SCHEDULE_NOT_FOUND", "That prepared schedule could not be found.");
-  const schedule = schedules[index];
-  if (schedule.enabled) throw coded("SCHEDULE_GRANT_PREPARED_ONLY", "Pause the schedule before approving durable schedule permission.");
-  if ((schedule.grantRefs || []).length) throw coded("SCHEDULE_GRANT_ALREADY_REFERENCED", "Revoke the current schedule permission before approving a replacement.");
-  if (grants.some((grant) => grant.scheduleId === schedule.id && grant.status === "active" && grant.revoked !== true)) {
-    throw coded("SCHEDULE_GRANT_ALREADY_ACTIVE", "This schedule already has active durable permission. Revoke it before creating another.");
-  }
-  if (grants.length >= MAX_SCHEDULE_GRANTS) throw coded("SCHEDULE_GRANT_LIMIT", `BrowserCrew can retain up to ${MAX_SCHEDULE_GRANTS} schedule permission receipts in this build.`);
+  const validationData = await chrome.storage.local.get(SCHEDULES_KEY);
+  const validationSchedules = Array.isArray(validationData[SCHEDULES_KEY]) ? validationData[SCHEDULES_KEY] : [];
+  const validationIndex = validationSchedules.findIndex((item) => item.id === scheduleId);
+  if (validationIndex < 0) throw coded("SCHEDULE_NOT_FOUND", "That prepared schedule could not be found.");
+  const scheduleSnapshot = structuredClone(validationSchedules[validationIndex]);
+  assertGrantApprovalScheduleReady(scheduleSnapshot);
 
-  const skillResult = await getSkillVersion(schedule.skillRef.id, schedule.skillRef.version);
+  const skillResult = await getSkillVersion(scheduleSnapshot.skillRef.id, scheduleSnapshot.skillRef.version);
   if (!skillResult.ok) throw coded("SCHEDULE_SKILL_NOT_FOUND", "The exact approved Skill version for this prepared schedule is no longer available.");
-  const grant = createScheduleGrant({
-    id: `schedule-grant:${crypto.randomUUID()}`,
-    schedule,
-    skill: skillResult.skill,
-    createdAt: now,
-    expiresAt
+
+  return withScheduleStateMutation(async () => {
+    const data = await chrome.storage.local.get([SCHEDULES_KEY, SCHEDULE_GRANTS_KEY]);
+    const schedules = Array.isArray(data[SCHEDULES_KEY]) ? data[SCHEDULES_KEY] : [];
+    const grants = Array.isArray(data[SCHEDULE_GRANTS_KEY]) ? data[SCHEDULE_GRANTS_KEY] : [];
+    const index = schedules.findIndex((item) => item.id === scheduleId);
+    const current = index >= 0 ? schedules[index] : null;
+    assertScheduleTargetUnchanged(current, scheduleSnapshot);
+    assertGrantApprovalScheduleReady(current);
+    if (grants.some((grant) => grant.scheduleId === current.id && grant.status === "active" && grant.revoked !== true)) {
+      throw coded("SCHEDULE_GRANT_ALREADY_ACTIVE", "This schedule already has active durable permission. Revoke it before creating another.");
+    }
+    if (grants.length >= MAX_SCHEDULE_GRANTS) throw coded("SCHEDULE_GRANT_LIMIT", `BrowserCrew can retain up to ${MAX_SCHEDULE_GRANTS} schedule permission receipts in this build.`);
+
+    const now = new Date().toISOString();
+    const grant = createScheduleGrant({
+      id: `schedule-grant:${crypto.randomUUID()}`,
+      schedule: current,
+      skill: skillResult.skill,
+      createdAt: now,
+      expiresAt
+    });
+    const nextSchedule = { ...current, grantRefs: [grant.id], updatedAt: now };
+    assertScheduleGrantMatches(nextSchedule, skillResult.skill, grant, { now: Date.parse(now) });
+    const nextSchedules = schedules.map((item, itemIndex) => itemIndex === index ? nextSchedule : item);
+    const nextGrants = [grant, ...grants].slice(0, MAX_SCHEDULE_GRANTS);
+    await chrome.storage.local.set({ [SCHEDULES_KEY]: nextSchedules, [SCHEDULE_GRANTS_KEY]: nextGrants });
+    return { ok: true, schedule: nextSchedule, grant: publicGrant(grant) };
   });
-  const nextSchedule = { ...schedule, grantRefs: [grant.id], updatedAt: now };
-  assertScheduleGrantMatches(nextSchedule, skillResult.skill, grant, { now: Date.parse(now) });
-  const nextSchedules = schedules.map((item, itemIndex) => itemIndex === index ? nextSchedule : item);
-  const nextGrants = [grant, ...grants].slice(0, MAX_SCHEDULE_GRANTS);
-  await chrome.storage.local.set({ [SCHEDULES_KEY]: nextSchedules, [SCHEDULE_GRANTS_KEY]: nextGrants });
-  return { ok: true, schedule: nextSchedule, grant: publicGrant(grant) };
 }
 
 export async function revokeScheduleGrantById(scheduleId, grantId) {
-  const now = new Date().toISOString();
-  const data = await chrome.storage.local.get([SCHEDULES_KEY, SCHEDULE_GRANTS_KEY]);
-  const schedules = Array.isArray(data[SCHEDULES_KEY]) ? data[SCHEDULES_KEY] : [];
-  const grants = Array.isArray(data[SCHEDULE_GRANTS_KEY]) ? data[SCHEDULE_GRANTS_KEY] : [];
-  const scheduleIndex = schedules.findIndex((item) => item.id === scheduleId);
-  if (scheduleIndex < 0) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
-  const schedule = schedules[scheduleIndex];
-  if (schedule.enabled) throw coded("SCHEDULE_GRANT_PAUSE_REQUIRED", "Pause the schedule before revoking future permission.");
-  const grantIndex = grants.findIndex((item) => item.id === grantId);
-  if (grantIndex < 0) throw coded("SCHEDULE_GRANT_NOT_FOUND", "That schedule permission receipt could not be found.");
-  if (grants[grantIndex].scheduleId !== scheduleId) throw coded("SCHEDULE_GRANT_SCHEDULE_MISMATCH", "That permission receipt belongs to a different schedule.");
+  return withScheduleStateMutation(async () => {
+    const now = new Date().toISOString();
+    const data = await chrome.storage.local.get([SCHEDULES_KEY, SCHEDULE_GRANTS_KEY]);
+    const schedules = Array.isArray(data[SCHEDULES_KEY]) ? data[SCHEDULES_KEY] : [];
+    const grants = Array.isArray(data[SCHEDULE_GRANTS_KEY]) ? data[SCHEDULE_GRANTS_KEY] : [];
+    const scheduleIndex = schedules.findIndex((item) => item.id === scheduleId);
+    if (scheduleIndex < 0) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
+    const schedule = schedules[scheduleIndex];
+    if (schedule.enabled) throw coded("SCHEDULE_GRANT_PAUSE_REQUIRED", "Pause the schedule before revoking future permission.");
+    const grantIndex = grants.findIndex((item) => item.id === grantId);
+    if (grantIndex < 0) throw coded("SCHEDULE_GRANT_NOT_FOUND", "That schedule permission receipt could not be found.");
+    if (grants[grantIndex].scheduleId !== scheduleId) throw coded("SCHEDULE_GRANT_SCHEDULE_MISMATCH", "That permission receipt belongs to a different schedule.");
 
-  const revoked = revokeScheduleGrant(grants[grantIndex], { revokedAt: now, reason: "user_revoked" });
-  const nextGrants = grants.map((item, itemIndex) => itemIndex === grantIndex ? revoked : item);
-  const nextSchedule = { ...schedule, grantRefs: (schedule.grantRefs || []).filter((id) => id !== grantId), updatedAt: now };
-  const nextSchedules = schedules.map((item, itemIndex) => itemIndex === scheduleIndex ? nextSchedule : item);
-  await chrome.storage.local.set({ [SCHEDULES_KEY]: nextSchedules, [SCHEDULE_GRANTS_KEY]: nextGrants });
-  return { ok: true, schedule: nextSchedule, grant: publicGrant(revoked) };
+    const revoked = revokeScheduleGrant(grants[grantIndex], { revokedAt: now, reason: "user_revoked" });
+    const nextGrants = grants.map((item, itemIndex) => itemIndex === grantIndex ? revoked : item);
+    const nextSchedule = { ...schedule, grantRefs: (schedule.grantRefs || []).filter((id) => id !== grantId), updatedAt: now };
+    const nextSchedules = schedules.map((item, itemIndex) => itemIndex === scheduleIndex ? nextSchedule : item);
+    await chrome.storage.local.set({ [SCHEDULES_KEY]: nextSchedules, [SCHEDULE_GRANTS_KEY]: nextGrants });
+    return { ok: true, schedule: nextSchedule, grant: publicGrant(revoked) };
+  });
 }
 
 export async function assertScheduleEditAllowedWithGrant(existing, next) {
@@ -117,24 +129,38 @@ export async function resolveActiveScheduleGrant(grantRefs, { schedule, skill } 
   return structuredClone(grant);
 }
 
-export async function revokeScheduleGrantsForDeletedSchedule(scheduleId) {
-  const data = await chrome.storage.local.get(SCHEDULE_GRANTS_KEY);
-  const grants = Array.isArray(data[SCHEDULE_GRANTS_KEY]) ? data[SCHEDULE_GRANTS_KEY] : [];
-  let changed = false;
-  const now = new Date().toISOString();
-  const next = grants.map((grant) => {
-    if (grant.scheduleId !== scheduleId || grant.status !== "active" || grant.revoked === true) return grant;
-    changed = true;
-    return revokeScheduleGrant(grant, { revokedAt: now, reason: "schedule_deleted" });
-  });
-  if (changed) await chrome.storage.local.set({ [SCHEDULE_GRANTS_KEY]: next });
-  return { ok: true, revoked: next.filter((grant) => grant.scheduleId === scheduleId && grant.status === "revoked").length };
+export async function revokeScheduleGrantsForDeletedSchedule(scheduleId, { scheduleStateLockHeld = false } = {}) {
+  const work = async () => {
+    const data = await chrome.storage.local.get(SCHEDULE_GRANTS_KEY);
+    const grants = Array.isArray(data[SCHEDULE_GRANTS_KEY]) ? data[SCHEDULE_GRANTS_KEY] : [];
+    let changed = false;
+    const now = new Date().toISOString();
+    const next = grants.map((grant) => {
+      if (grant.scheduleId !== scheduleId || grant.status !== "active" || grant.revoked === true) return grant;
+      changed = true;
+      return revokeScheduleGrant(grant, { revokedAt: now, reason: "schedule_deleted" });
+    });
+    if (changed) await chrome.storage.local.set({ [SCHEDULE_GRANTS_KEY]: next });
+    return { ok: true, revoked: next.filter((grant) => grant.scheduleId === scheduleId && grant.status === "revoked").length };
+  };
+  return scheduleStateLockHeld ? work() : withScheduleStateMutation(work);
 }
 
 export function assertScheduleGrantRecord(grant) {
   const result = validateScheduleGrant(grant);
   if (!result.ok) throw coded("SCHEDULE_GRANT_INVALID", result.errors.join(" "));
   return true;
+}
+
+function assertGrantApprovalScheduleReady(schedule) {
+  if (!schedule) throw coded("SCHEDULE_NOT_FOUND", "That prepared schedule could not be found.");
+  if (schedule.enabled) throw coded("SCHEDULE_GRANT_PREPARED_ONLY", "Pause the schedule before approving durable schedule permission.");
+  if ((schedule.grantRefs || []).length) throw coded("SCHEDULE_GRANT_ALREADY_REFERENCED", "Revoke the current schedule permission before approving a replacement.");
+}
+
+function assertScheduleTargetUnchanged(current, snapshot) {
+  if (current != null && snapshot != null && JSON.stringify(current) === JSON.stringify(snapshot)) return;
+  throw coded("SCHEDULE_CHANGED_RETRY", "This schedule changed while BrowserCrew was checking it. Review the latest schedule and try again.");
 }
 
 function publicGrant(grant) {

@@ -289,11 +289,15 @@ for (const phrase of [
   "const previous = runHistoryMutation || Promise.resolve()",
   "if (runHistoryMutation === current) runHistoryMutation = null"
 ]) assert.ok(runtimeSource.includes(phrase), `Shared schedule-run history serialization contract missing: ${phrase}`);
+const sharedStateSource = await readFile(new URL("../src/schedule-state-mutation.js", import.meta.url), "utf8");
 for (const phrase of [
   "let scheduleStateMutation = null",
-  "async function withScheduleStateMutation(work)",
-  "SCHEDULE_CHANGED_RETRY"
-]) assert.ok(runtimeSource.includes(phrase), `Shared schedule-state serialization contract missing: ${phrase}`);
+  "export async function withScheduleStateMutation(work)",
+  "const previous = scheduleStateMutation || Promise.resolve()",
+  "if (scheduleStateMutation === current) scheduleStateMutation = null"
+]) assert.ok(sharedStateSource.includes(phrase), `Shared schedule-state serialization contract missing: ${phrase}`);
+assert.ok(runtimeSource.includes('from "./schedule-state-mutation.js"'), "Schedule runtime must use the shared cross-module schedule-state mutex.");
+assert.ok(runtimeSource.includes("SCHEDULE_CHANGED_RETRY"), "Schedule runtime must still fail closed if a validated schedule snapshot changes before persistence.");
 
 const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
 assert.equal((manifest.permissions || []).includes("alarms"), false, "Schedule-state hardening must not activate scheduling in the frozen v0.2 manifest.");
