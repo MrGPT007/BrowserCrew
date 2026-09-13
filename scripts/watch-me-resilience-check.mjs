@@ -122,6 +122,7 @@ for (const phrase of [
 ]) assert.ok(workflow.includes(phrase), `Current-stable Watch resilience gate missing: ${phrase}`);
 const previousRunner = await readFile("scripts/previous-stable-runner.mjs", "utf8");
 assert.ok(previousRunner.includes('"watch-me-resilience-smoke.mjs"'), "Chrome 152 matrix must include Watch Me resilience coverage.");
+assert.ok(previousRunner.includes('"watch-me-event-trust-smoke.mjs"'), "Chrome 152 matrix must include hostile page-event trust coverage.");
 
 const manifest = JSON.parse(await readFile("manifest.json", "utf8"));
 assert.equal((manifest.permissions || []).includes("alarms"), false, "Watch Me resilience must not widen the active v0.2 manifest.");
@@ -130,7 +131,10 @@ assert.equal(serviceWorker.includes("bootSchedulesRuntime"), false, "Watch Me re
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
 assert.equal(pkg.scripts?.["watch-me-resilience-check"], "node scripts/watch-me-resilience-check.mjs");
-assert.equal(pkg.scripts?.["watch-me-resilience-smoke"], "node scripts/watch-me-resilience-smoke.mjs");
+const watchResilienceSmoke = String(pkg.scripts?.["watch-me-resilience-smoke"] || "");
+assert.ok(watchResilienceSmoke.includes("node scripts/watch-me-resilience-smoke.mjs"), "Current Chrome Watch resilience gate must keep the service-worker restart smoke.");
+assert.ok(watchResilienceSmoke.includes("node scripts/watch-me-event-trust-smoke.mjs"), "Current Chrome Watch resilience gate must also prove hostile synthetic page events are rejected.");
+assert.equal(pkg.scripts?.["watch-me-event-trust-smoke"], "node scripts/watch-me-event-trust-smoke.mjs");
 assert.ok(String(pkg.scripts?.check || "").includes("watch-me-resilience-check.mjs"));
 
 console.log("BrowserCrew Watch Me recorder resilience contracts passed.");
