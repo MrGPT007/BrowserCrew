@@ -9,6 +9,7 @@ const files = [
   "src/skills-versioning.js",
   "src/skills-test.js",
   "src/skills-run-ui.js",
+  "src/skills-draft-test-ui.js",
   "scripts/skill-run-ui-smoke.mjs"
 ];
 for (const file of files) {
@@ -48,7 +49,18 @@ assert.deepEqual(next.actionClasses, sample.actionClasses);
 assert.deepEqual(next.provenance.sourceSkillRef, { id: sample.id, version: sample.version });
 
 const testSource = await readFile("src/skills-test.js", "utf8");
-for (const phrase of ["testApprovedSkillOnPage", "materializeSkillSteps", "TARGET_AMBIGUOUS", "Test does not navigate", "Recorded download replay is not enabled", "CLICK_REQUIRES_COMMIT_APPROVAL"]) assert.ok(testSource.includes(phrase), `Safe Test contract missing: ${phrase}`);
+for (const phrase of [
+  "testApprovedSkillOnPage",
+  "testDraftSkillOnPage",
+  "materializeSkillSteps",
+  "validateSkill(skill)",
+  'mode: "draft_preflight"',
+  "SKILL_STEP_REVIEW_REQUIRED",
+  "TARGET_AMBIGUOUS",
+  "Test does not navigate",
+  "Recorded download replay is not enabled",
+  "CLICK_REQUIRES_COMMIT_APPROVAL"
+]) assert.ok(testSource.includes(phrase), `Safe Test contract missing: ${phrase}`);
 assert.equal(testSource.includes("el.click()"), false, "Safe Test must never click page controls.");
 assert.equal(testSource.includes("el.value ="), false, "Safe Test must never type into page controls.");
 assert.equal(testSource.includes("chrome.tabs.update"), false, "Safe Test must never navigate the page.");
@@ -67,10 +79,28 @@ for (const phrase of [
 ]) assert.ok(ui.includes(phrase), `Skill Test/Run UI contract missing: ${phrase}`);
 assert.equal(ui.includes("chrome.storage"), false, "One-run grants must not be persisted by the Skill UI.");
 
+const draftUi = await readFile("src/skills-draft-test-ui.js", "utf8");
+for (const phrase of [
+  "Test draft — no changes",
+  "DRAFT TEST · OBSERVATION ONLY",
+  "without clicking, typing, navigating, downloading, saving, approving, or running this draft",
+  "Draft Test never asks Chrome for new site access",
+  "chrome.permissions.contains",
+  "testDraftSkillOnPage",
+  "Review this draft first",
+  "No draft step ran and no approval was created"
+]) assert.ok(draftUi.includes(phrase), `Draft Test UI safety contract missing: ${phrase}`);
+for (const forbidden of ["chrome.permissions.request", "chrome.storage", 'type: "run"', "runPortRequest", "Review and run once"]) {
+  assert.equal(draftUi.includes(forbidden), false, `Draft Test UI must not contain authority path: ${forbidden}`);
+}
+
 const sidepanel = await readFile("src/sidepanel.js", "utf8");
 assert.ok(sidepanel.includes('import "./skills-run-ui.js";'), "Side panel must load the Versions/Test/Run UI.");
+assert.ok(sidepanel.includes('import "./skills-draft-test-ui.js";'), "Side panel must load the observation-only Draft Test UI.");
 const manifest = JSON.parse(await readFile("manifest.json", "utf8"));
 assert.equal((manifest.permissions || []).includes("alarms"), false, "Skill Test/Run must not boot production scheduling or add alarms permission.");
+const serviceWorker = await readFile("src/service-worker.js", "utf8");
+assert.equal(serviceWorker.includes("bootSchedulesRuntime"), false, "Draft Test must not activate production scheduling.");
 
 const workflow = await readFile(".github/workflows/quality.yml", "utf8");
 for (const phrase of ["npm run skill-run-ui-smoke", "skill-run-ui-evidence"]) assert.ok(workflow.includes(phrase), `Quality workflow Skill Test/Run coverage missing: ${phrase}`);
@@ -78,5 +108,7 @@ const pkg = JSON.parse(await readFile("package.json", "utf8"));
 assert.equal(pkg.scripts?.["skills-run-ui-check"], "node scripts/skills-run-ui-check.mjs");
 assert.equal(pkg.scripts?.["skill-run-ui-smoke"], "node scripts/skill-run-ui-smoke.mjs");
 assert.ok(String(pkg.scripts?.check || "").includes("skills-run-ui-check.mjs"));
+const previousStableRunner = await readFile("scripts/previous-stable-runner.mjs", "utf8");
+assert.ok(previousStableRunner.includes('"skill-run-ui-smoke.mjs"'), "Chrome 152 matrix must keep the combined approved Run and draft preflight smoke mandatory.");
 
 console.log("BrowserCrew Skill Versions/Test/Run contracts passed.");

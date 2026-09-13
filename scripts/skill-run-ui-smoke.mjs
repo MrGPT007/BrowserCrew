@@ -44,6 +44,37 @@ function skill(version, status) {
 }
 const approved = skill("1.0.0", "approved");
 const archived = skill("0.9.0", "archived");
+const fragileDraft = {
+  schemaVersion: 1,
+  id: "fragile-draft",
+  version: "0.1.0",
+  status: "draft",
+  title: "Fragile draft",
+  description: "A recorded draft with one target that still needs review.",
+  inputs: {},
+  allowedOrigins: [fixture.origin],
+  actionClasses: ["read", "page_write_prepare"],
+  dataDestinations: [],
+  budgets: { maxSteps: 6, maxMinutes: 5 },
+  steps: [
+    {
+      id: "fragile-preview",
+      kind: "click",
+      purpose: "Preview using the recorded weak target.",
+      origin: fixture.origin,
+      target: { role: "button" },
+      review: {
+        stability: "fragile",
+        unresolved: true,
+        reason: "This recorded target has a weak semantic fingerprint. Review or remove this step before approving the skill."
+      }
+    },
+    { id: "fragile-verify", kind: "verify", purpose: "Verify result.", origin: fixture.origin, expect: { visibleText: "Ready" } }
+  ],
+  completionCriteria: [{ claim: "Preview is ready.", verification: "Visible text says Ready." }],
+  recovery: { retryWrites: false, reconcileUnknownWrites: true },
+  provenance: { source: "watch_me_demonstration", createdAt: "2026-09-12T12:20:00.000Z" }
+};
 
 try {
   await rm(artifactDir, { recursive: true, force: true });
@@ -60,7 +91,7 @@ try {
   if (!worker) worker = await context.waitForEvent("serviceworker", { timeout: timeoutMs });
   const extensionId = new URL(worker.url()).host;
   report.extensionId = extensionId;
-  await worker.evaluate(async (skills) => chrome.storage.local.set({ "browsercrew.skillLibrary.v1": skills }), [approved, archived]);
+  await worker.evaluate(async (skills) => chrome.storage.local.set({ "browsercrew.skillLibrary.v1": skills }), [approved, archived, fragileDraft]);
 
   const target = await context.newPage();
   await target.goto(`${fixture.origin}/form.html`);
@@ -68,11 +99,17 @@ try {
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
   await panel.getByRole("tab", { name: "Skills" }).click();
   const approvedCard = panel.locator('[data-skill-record="supplier-check@@1.0.0"]');
+  const fragileCard = panel.locator('[data-skill-record="fragile-draft@@0.1.0"]');
   await approvedCard.waitFor({ state: "visible", timeout: timeoutMs });
+  await fragileCard.waitFor({ state: "visible", timeout: timeoutMs });
   await approvedCard.getByRole("button", { name: "Versions" }).waitFor({ state: "visible", timeout: timeoutMs });
   await approvedCard.getByRole("button", { name: "Test / Run" }).waitFor({ state: "visible", timeout: timeoutMs });
+  await fragileCard.getByRole("button", { name: "Test draft — no changes" }).waitFor({ state: "visible", timeout: timeoutMs });
+  assert.equal(await approvedCard.locator("[data-test-draft-skill]").count(), 0, "Approved versions must not expose the draft-only Test button.");
+  assert.equal(await fragileCard.locator("[data-open-skill-run]").count(), 0, "Draft versions must never expose Run.");
   assert.equal(await panel.locator('[data-skill-status="archived"] [data-open-skill-run]').count(), 0, "Archived versions must not expose Run.");
-  pass("My Skills exposes Versions and Test / Run only on approved exact versions");
+  assert.equal(await panel.locator('[data-skill-status="archived"] [data-test-draft-skill]').count(), 0, "Archived versions must not expose draft Test.");
+  pass("My Skills separates approved Test / Run from observation-only Draft Test, and exposes Run only on approved exact versions");
 
   await approvedCard.getByRole("button", { name: "Versions" }).click();
   await panel.locator("#skillVersionsPanel").waitFor({ state: "visible", timeout: timeoutMs });
@@ -100,7 +137,59 @@ try {
   assert.equal(Object.prototype.hasOwnProperty.call(storedLegacyApproved, "allowedResources"), false, "Reading a legacy approved version must not rewrite immutable stored history.");
   pass("Legacy v1 metadata is normalized in memory while every newly saved draft persists complete safe metadata with its own timestamp without rewriting approved history");
 
+  const generatedDraftCard = panel.locator('[data-skill-record="supplier-check@@1.0.1"]');
+  await generatedDraftCard.waitFor({ state: "visible", timeout: timeoutMs });
+  await generatedDraftCard.getByRole("button", { name: "Test draft — no changes" }).waitFor({ state: "visible", timeout: timeoutMs });
+  assert.equal(await generatedDraftCard.locator("[data-open-skill-run]").count(), 0, "New draft versions must not expose Run before approval.");
+  const draftLibraryBefore = await storedSkills(worker);
+  const draftRunsBefore = await storedRuns(worker);
+  const draftPermissionsBefore = await grantedPermissions(worker);
+  assert.equal(draftRunsBefore.length, 0);
+  assert.equal(await target.locator("#search").inputValue(), "");
+  assert.equal(await target.locator("#ready").isVisible(), false);
+  assert.equal(await target.locator("body").getAttribute("data-submits"), "0");
+  await target.bringToFront();
+  await panel.evaluate(() => document.querySelector('[data-skill-record="supplier-check@@1.0.1"] [data-test-draft-skill]')?.click());
+  const draftPanel = panel.locator("#skillDraftTestPanel");
+  await draftPanel.waitFor({ state: "visible", timeout: timeoutMs });
+  assert.match(await draftPanel.innerText(), /DRAFT TEST · OBSERVATION ONLY/i);
+  assert.match(await draftPanel.innerText(), /never asks Chrome for new site access/i);
+  assert.equal(await draftPanel.getByRole("button", { name: /run/i }).count(), 0, "Draft Test panel must contain no Run control.");
+  await draftPanel.locator('[data-draft-test-input="query"]').fill(RUN_VALUE);
+  await target.bringToFront();
+  await panel.evaluate(() => document.querySelector("#skillDraftTestPanel [data-run-draft-test]")?.click());
+  await waitUntil(async () => /Draft looks testable on this page/.test(await panel.locator("#skillDraftTestResult").innerText()), "Draft preflight should inspect the current page without running it.");
+  assert.equal(await target.locator("#search").inputValue(), "", "Draft Test must not type the runtime input.");
+  assert.equal(await target.locator("#ready").isVisible(), false, "Draft Test must not click Preview.");
+  assert.equal(await target.locator("body").getAttribute("data-submits"), "0", "Draft Test must not submit the form.");
+  assert.deepEqual(await storedRuns(worker), draftRunsBefore, "Draft Test must not create a durable execution receipt.");
+  assert.deepEqual(await storedSkills(worker), draftLibraryBefore, "Draft Test must not approve or mutate any stored Skill version.");
+  assert.deepEqual(await grantedPermissions(worker), draftPermissionsBefore, "Draft Test must not grant new Chrome permission.");
+  assert.equal((await storedSkills(worker)).find((item) => item.id === "supplier-check" && item.version === "1.0.1")?.status, "draft");
+  pass("Draft Test re-observes a reviewable draft without clicking, typing, navigating, persisting authority, creating a run, or granting site access");
+  await draftPanel.getByRole("button", { name: "Close" }).click();
+
   await panel.getByRole("button", { name: /^All versions/ }).click();
+  await waitUntil(async () => await panel.locator('[data-skill-record="fragile-draft@@0.1.0"]').count() === 1, "Fragile draft should remain visible in All versions.");
+  await target.bringToFront();
+  await panel.evaluate(() => document.querySelector('[data-skill-record="fragile-draft@@0.1.0"] [data-test-draft-skill]')?.click());
+  const fragilePanel = panel.locator("#skillDraftTestPanel");
+  await fragilePanel.waitFor({ state: "visible", timeout: timeoutMs });
+  assert.match(await fragilePanel.innerText(), /1 recorded target still needs review/i);
+  await target.bringToFront();
+  await panel.evaluate(() => document.querySelector("#skillDraftTestPanel [data-run-draft-test]")?.click());
+  await waitUntil(async () => /Review this draft first/.test(await panel.locator("#skillDraftTestResult").innerText()), "Unresolved draft Test should fail closed as review-needed.");
+  assert.match(await panel.locator("#skillDraftTestResult").innerText(), /weak semantic fingerprint/i);
+  assert.equal(await target.locator("#search").inputValue(), "");
+  assert.equal(await target.locator("#ready").isVisible(), false);
+  assert.equal(await target.locator("body").getAttribute("data-submits"), "0");
+  assert.equal((await storedRuns(worker)).length, 0);
+  const fragileStored = (await storedSkills(worker)).find((item) => item.id === "fragile-draft");
+  assert.equal(fragileStored.status, "draft");
+  assert.equal(fragileStored.steps[0].review.unresolved, true);
+  pass("Draft Test surfaces unresolved fragile targets as blocked review work instead of inspecting or executing them");
+  await fragilePanel.getByRole("button", { name: "Close" }).click();
+
   await waitUntil(async () => await panel.locator('[data-skill-record="supplier-check@@1.0.0"]').count() === 1, "Approved version should remain in All versions.");
   await target.bringToFront();
   await panel.evaluate(() => document.querySelector('[data-skill-record="supplier-check@@1.0.0"] [data-open-skill-run]')?.click());
@@ -111,17 +200,17 @@ try {
   assert.match(scopeText, /page_write_prepare/);
   assert.match(scopeText, /Resources: none/);
   assert.match(scopeText, /Provider capabilities: none/);
-  pass("Test / Run review shows the pinned version, websites, resources, actions, provider capabilities, data destinations, limits, and run-time inputs before authority exists");
+  pass("Approved Test / Run review still shows the pinned version, websites, resources, actions, provider capabilities, data destinations, limits, and run-time inputs before authority exists");
 
   const beforeRuns = await storedRuns(worker);
   assert.equal(beforeRuns.length, 0);
   await target.bringToFront();
   await panel.evaluate(() => document.querySelector("#skillTestButton")?.click());
-  await waitUntil(async () => /Ready to run on this page/.test(await panel.locator("#skillTestResult").innerText()), "Read-only Test should report readiness.");
-  assert.equal(await target.locator("#search").inputValue(), "", "Test must not type the runtime input.");
-  assert.equal(await target.locator("#ready").isVisible(), false, "Test must not click Preview or create the result.");
-  assert.equal((await storedRuns(worker)).length, 0, "Test must not create an execution receipt.");
-  pass("Test re-observes semantic controls on the current page without clicking, typing, navigating, or creating a run");
+  await waitUntil(async () => /Ready to run on this page/.test(await panel.locator("#skillTestResult").innerText()), "Read-only approved Test should report readiness.");
+  assert.equal(await target.locator("#search").inputValue(), "", "Approved Test must not type the runtime input.");
+  assert.equal(await target.locator("#ready").isVisible(), false, "Approved Test must not click Preview or create the result.");
+  assert.equal((await storedRuns(worker)).length, 0, "Approved Test must not create an execution receipt.");
+  pass("Approved Test continues to re-observe semantic controls on the current page without clicking, typing, navigating, or creating a run");
 
   await target.locator("#search").evaluate((el) => el.remove());
   await target.bringToFront();
@@ -129,7 +218,7 @@ try {
   await waitUntil(async () => /Review before running/.test(await panel.locator("#skillTestResult").innerText()), "Stale target Test should fail safely.");
   assert.match(await panel.locator("#skillTestResult").innerText(), /could not be found/i);
   assert.equal((await storedRuns(worker)).length, 0);
-  pass("Test detects a stale missing target and fails safely without dispatching any step");
+  pass("Approved Test detects a stale missing target and fails safely without dispatching any step");
 
   await target.reload();
   await target.bringToFront();
@@ -144,7 +233,7 @@ try {
   assert.equal(runs[0].status, "completed");
   assert.deepEqual(runs[0].skillRef, { id: approved.id, version: approved.version });
   assert.equal(JSON.stringify(runs[0]).includes(RUN_VALUE), false, "Run-time input values must not enter durable history.");
-  pass("Run uses the exact approved version, existing revalidation runner, one-run review authority, and final verification without submitting");
+  pass("Run remains approved-only, uses the exact approved version, existing revalidation runner, one-run review authority, and final verification without submitting");
 
   const allStorage = await worker.evaluate(async () => chrome.storage.local.get(null));
   const grantKeys = Object.keys(allStorage).filter((key) => /grant/i.test(key));
@@ -179,6 +268,12 @@ try {
 
 async function storedSkills(worker) { return worker.evaluate(async () => (await chrome.storage.local.get("browsercrew.skillLibrary.v1"))["browsercrew.skillLibrary.v1"] || []); }
 async function storedRuns(worker) { return worker.evaluate(async () => (await chrome.storage.local.get("browsercrew.skillRuns.v1"))["browsercrew.skillRuns.v1"] || []); }
+async function grantedPermissions(worker) {
+  return worker.evaluate(async () => {
+    const value = await chrome.permissions.getAll();
+    return { origins: [...(value.origins || [])].sort(), permissions: [...(value.permissions || [])].sort() };
+  });
+}
 function pass(name) { report.checks.push({ name, at: new Date().toISOString() }); }
 async function prepareExtension(target, origin) {
   await cp(repoRoot, target, { recursive: true, filter: (source) => {

@@ -1,9 +1,21 @@
-import { assertSkillExecutable, materializeSkillSteps } from "./skills-contract.js";
+import { assertSkillExecutable, materializeSkillSteps, validateSkill } from "./skills-contract.js";
 
 export async function testApprovedSkillOnPage({ skill, inputValues = {}, tabId } = {}) {
   assertSkillExecutable(skill);
-  if (!Number.isInteger(tabId)) throw coded("SKILL_TAB_REQUIRED", "Choose the page where this skill should be tested.");
   const steps = materializeSkillSteps(skill, inputValues);
+  return inspectSkillOnPage({ skill, steps, tabId, mode: "approved_test" });
+}
+
+export async function testDraftSkillOnPage({ skill, inputValues = {}, tabId } = {}) {
+  const check = validateSkill(skill);
+  if (!check.ok) throw coded("SKILL_INVALID", `This draft needs review before testing: ${check.errors.join(" ")}`);
+  if (skill.status !== "draft") throw coded("SKILL_DRAFT_REQUIRED", "Choose an exact draft Skill version to test before approval.");
+  const steps = materializeDraftSteps(skill, inputValues);
+  return inspectSkillOnPage({ skill, steps, tabId, mode: "draft_preflight" });
+}
+
+async function inspectSkillOnPage({ skill, steps, tabId, mode }) {
+  if (!Number.isInteger(tabId)) throw coded("SKILL_TAB_REQUIRED", "Choose the page where this skill should be tested.");
   const tab = await chrome.tabs.get(tabId);
   if (!tab?.url || !/^https?:/.test(tab.url)) throw coded("SKILL_UNSUPPORTED_PAGE", "Test works only on a normal website page.");
   const currentOrigin = new URL(tab.url).origin;
@@ -12,6 +24,11 @@ export async function testApprovedSkillOnPage({ skill, inputValues = {}, tabId }
   const checks = [];
   let ready = true;
   for (const step of steps) {
+    if (step.review?.unresolved === true) {
+      checks.push({ stepId: step.id, kind: step.kind, status: "blocked", code: "SKILL_STEP_REVIEW_REQUIRED", message: step.review.reason || "This recorded target still needs review before the draft can be approved or run." });
+      ready = false;
+      continue;
+    }
     if (step.kind === "navigate") {
       const destination = new URL(step.url);
       const inScope = skill.allowedOrigins.includes(destination.origin);
@@ -43,6 +60,7 @@ export async function testApprovedSkillOnPage({ skill, inputValues = {}, tabId }
   return {
     ok: true,
     ready,
+    mode,
     skillRef: { id: skill.id, version: skill.version },
     page: { id: tab.id, title: String(tab.title || "").slice(0, 160), url: tab.url, origin: currentOrigin },
     requirements: {
@@ -53,6 +71,38 @@ export async function testApprovedSkillOnPage({ skill, inputValues = {}, tabId }
     },
     checks
   };
+}
+
+function materializeDraftSteps(skill, inputValues) {
+  const resolved = {};
+  for (const [name, definition] of Object.entries(skill.inputs || {})) {
+    const hasValue = Object.prototype.hasOwnProperty.call(inputValues, name);
+    const value = hasValue ? inputValues[name] : definition.default;
+    if (definition.required && (value === undefined || value === null || value === "")) throw coded("SKILL_INPUT_REQUIRED", `Enter ${definition.label || name} before testing this draft.`);
+    if (value !== undefined) resolved[name] = validateDraftInput(name, definition, value);
+  }
+  return replaceInputRefs(structuredClone(skill.steps), resolved);
+}
+
+function validateDraftInput(name, definition, value) {
+  if (definition.type === "string") {
+    if (typeof value !== "string") throw coded("SKILL_INPUT_INVALID", `${definition.label || name} must be text.`);
+    if (Number.isInteger(definition.maxLength) && value.length > definition.maxLength) throw coded("SKILL_INPUT_INVALID", `${definition.label || name} is too long.`);
+  } else if (definition.type === "number") {
+    if (typeof value !== "number" || !Number.isFinite(value)) throw coded("SKILL_INPUT_INVALID", `${definition.label || name} must be a number.`);
+  } else if (definition.type === "boolean" && typeof value !== "boolean") throw coded("SKILL_INPUT_INVALID", `${definition.label || name} must be yes or no.`);
+  return value;
+}
+
+function replaceInputRefs(value, inputs) {
+  if (typeof value === "string") {
+    const exact = value.match(/^\{\{input\.([a-zA-Z0-9_]+)\}\}$/);
+    if (exact) return inputs[exact[1]];
+    return value.replace(/\{\{input\.([a-zA-Z0-9_]+)\}\}/g, (_, name) => String(inputs[name] ?? ""));
+  }
+  if (Array.isArray(value)) return value.map((item) => replaceInputRefs(item, inputs));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, replaceInputRefs(child, inputs)]));
+  return value;
 }
 
 async function inspectTarget(step, tabId) {

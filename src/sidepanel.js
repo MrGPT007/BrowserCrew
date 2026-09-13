@@ -4,5 +4,6 @@ import "./skills-draft-review-ui.js";
 import "./skills-library-lifecycle-ui.js";
 import "./skills-portable-ui.js";
 import "./skills-run-ui.js";
+import "./skills-draft-test-ui.js";
 import "./schedule-setup-ui.js";
 import "./sidepanel-legacy.js";
