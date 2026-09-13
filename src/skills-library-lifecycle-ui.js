@@ -130,6 +130,7 @@ function renderSkills() {
   const count = document.querySelector("#versionedSkillCount");
   const filters = document.querySelector("#skillLibraryFilters");
   if (!list || !count || !filters) return;
+  if (list.querySelector("[data-draft-review-editor]")) return;
 
   for (const button of filters.querySelectorAll("[data-skill-filter]")) {
     const filter = button.dataset.skillFilter;

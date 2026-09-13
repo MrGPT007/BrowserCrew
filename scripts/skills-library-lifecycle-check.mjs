@@ -73,6 +73,7 @@ for (const phrase of [
   "Only this unapproved draft will be removed."
 ]) if (!ui.includes(phrase)) throw new Error(`Skill library lifecycle UI contract missing: ${phrase}`);
 if (ui.includes('type: "delete"')) throw new Error("Skill library lifecycle must not introduce a generic delete operation for approved or archived history.");
+if (!ui.includes('if (list.querySelector("[data-draft-review-editor]")) return;')) throw new Error("Skill library refresh must not replace an open draft-review editor.");
 
 const sidepanel = await readFile("src/sidepanel.js", "utf8");
 if (!sidepanel.includes('import "./skills-library-lifecycle-ui.js"')) throw new Error("Side panel must load the skill library lifecycle UI.");
