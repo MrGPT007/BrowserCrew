@@ -30,9 +30,18 @@ for (const phrase of [
   "Edit prepared schedule",
   'type: "delete"',
   "does not turn the schedule on",
-  "does not add Chrome's alarms permission"
+  "does not add Chrome's alarms permission",
+  "let setupHydrationPromise = null",
+  'setupButton.textContent = "Loading schedule setup…"',
+  "hydrateScheduleSetup()",
+  "const ready = await hydrateScheduleSetup()",
+  'setupButton.textContent = "Retry schedule setup"',
+  'setupButton.setAttribute("aria-busy", "true")'
 ]) assert.ok(ui.includes(phrase), `Prepared schedule UI contract missing: ${phrase}`);
 
+const initialEnable = ui.indexOf('setupButton.textContent = "Prepare a schedule"');
+const initialHydrate = ui.indexOf("hydrateScheduleSetup().catch");
+assert.ok(initialEnable < 0 || initialEnable > initialHydrate, "Schedule setup must not advertise readiness before async Skills/Connections/Schedules hydration starts.");
 assert.equal(ui.includes('type: "setEnabled"'), false, "Prepared schedule UI must not expose activation in the no-alarms slice.");
 assert.equal(ui.includes("chrome.alarms"), false, "Prepared schedule UI must not access chrome.alarms directly.");
 

@@ -7,6 +7,7 @@ const CONNECTIONS_PORT = "browsercrew-connections";
 const MAX_CONNECTIONS = 12;
 
 const ports = new Set();
+let migrationPromise = null;
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== CONNECTIONS_PORT) return;
@@ -21,7 +22,9 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
-ensureMigratedConnections().then(broadcastState).catch(() => {});
+// Migrate lazily on the first explicit connection request. Boot-time writes can
+// race Chrome/session restoration or a newly saved connection and must never
+// replace newer connection state with a generated default profile.
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local" && changes[LEGACY_SETTINGS_KEY]?.newValue) {
@@ -51,6 +54,13 @@ async function handleConnectionMessage(message) {
 }
 
 async function ensureMigratedConnections() {
+  if (!migrationPromise) {
+    migrationPromise = migrateConnectionsSafely().finally(() => { migrationPromise = null; });
+  }
+  return migrationPromise;
+}
+
+async function migrateConnectionsSafely() {
   const local = await chrome.storage.local.get([CONNECTIONS_KEY, ACTIVE_KEY, LEGACY_SETTINGS_KEY]);
   let connections = Array.isArray(local[CONNECTIONS_KEY]) ? local[CONNECTIONS_KEY] : [];
   let activeId = local[ACTIVE_KEY] || null;
@@ -58,25 +68,35 @@ async function ensureMigratedConnections() {
   let secrets = session[SECRETS_KEY] && typeof session[SECRETS_KEY] === "object" ? session[SECRETS_KEY] : {};
 
   if (!connections.length) {
-    const legacy = normalizeSettings(local[LEGACY_SETTINGS_KEY] || defaultSettings());
-    const now = new Date().toISOString();
-    const id = crypto.randomUUID();
-    connections = [{
-      id,
-      schemaVersion: 1,
-      name: defaultConnectionName(legacy.kind),
-      kind: legacy.kind,
-      model: legacy.model,
-      baseUrl: legacy.baseUrl,
-      status: "not_tested",
-      lastTestedAt: null,
-      createdAt: now,
-      updatedAt: now
-    }];
-    activeId = id;
-    if (session[LEGACY_SECRET_KEY]) secrets[id] = session[LEGACY_SECRET_KEY];
-    await chrome.storage.local.set({ [CONNECTIONS_KEY]: connections, [ACTIVE_KEY]: activeId });
-    await chrome.storage.session.set({ [SECRETS_KEY]: secrets });
+    // Re-read immediately before bootstrap creation. Another BrowserCrew surface
+    // or Chrome restoration may have populated named connections after our
+    // first read; newer state always wins over a generated default.
+    const latest = await chrome.storage.local.get([CONNECTIONS_KEY, ACTIVE_KEY]);
+    const latestConnections = Array.isArray(latest[CONNECTIONS_KEY]) ? latest[CONNECTIONS_KEY] : [];
+    if (latestConnections.length) {
+      connections = latestConnections;
+      activeId = latest[ACTIVE_KEY] || activeId;
+    } else {
+      const legacy = normalizeSettings(local[LEGACY_SETTINGS_KEY] || defaultSettings());
+      const now = new Date().toISOString();
+      const id = crypto.randomUUID();
+      connections = [{
+        id,
+        schemaVersion: 1,
+        name: defaultConnectionName(legacy.kind),
+        kind: legacy.kind,
+        model: legacy.model,
+        baseUrl: legacy.baseUrl,
+        status: "not_tested",
+        lastTestedAt: null,
+        createdAt: now,
+        updatedAt: now
+      }];
+      activeId = id;
+      if (session[LEGACY_SECRET_KEY]) secrets[id] = session[LEGACY_SECRET_KEY];
+      await chrome.storage.local.set({ [CONNECTIONS_KEY]: connections, [ACTIVE_KEY]: activeId });
+      await chrome.storage.session.set({ [SECRETS_KEY]: secrets });
+    }
   }
 
   if (!connections.some((item) => item.id === activeId)) {

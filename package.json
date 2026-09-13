@@ -9,6 +9,7 @@
     "privacy-check": "node scripts/privacy-check.mjs",
     "chat-check": "node scripts/chat-check.mjs",
     "connections-check": "node scripts/connections-check.mjs",
+    "connections-migration-race-check": "node scripts/connections-migration-race-check.mjs",
     "attachments-check": "node scripts/attachments-check.mjs",
     "tools-check": "node scripts/tools-check.mjs",
     "mcp-check": "node scripts/mcp-check.mjs",

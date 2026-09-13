@@ -3,11 +3,12 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-for (const file of ["src/connections-runtime.js", "src/connections-ui.js", "src/styles/connections.css", "scripts/connections-smoke.mjs"]) await access(file);
+for (const file of ["src/connections-runtime.js", "src/connections-ui.js", "src/styles/connections.css", "scripts/connections-smoke.mjs", "scripts/connections-migration-race-check.mjs"]) await access(file);
 await Promise.all([
   execFileAsync(process.execPath, ["--check", "src/connections-runtime.js"]),
   execFileAsync(process.execPath, ["--check", "src/connections-ui.js"]),
-  execFileAsync(process.execPath, ["--check", "scripts/connections-smoke.mjs"])
+  execFileAsync(process.execPath, ["--check", "scripts/connections-smoke.mjs"]),
+  execFileAsync(process.execPath, ["scripts/connections-migration-race-check.mjs"])
 ]);
 
 const worker = await readFile("src/service-worker.js", "utf8");
@@ -24,8 +25,13 @@ for (const contract of [
   "ACTIVATE_CONNECTION",
   "TEST_CONNECTION",
   "safeProviderErrorMessage",
-  "MAX_CONNECTIONS = 12"
+  "MAX_CONNECTIONS = 12",
+  "let migrationPromise = null",
+  "migrateConnectionsSafely",
+  "const latest = await chrome.storage.local.get([CONNECTIONS_KEY, ACTIVE_KEY])",
+  "newer state always wins over a generated default"
 ]) if (!runtime.includes(contract)) throw new Error(`Connection registry contract missing: ${contract}`);
+if (runtime.includes("ensureMigratedConnections().then(broadcastState)")) throw new Error("Connection registry must not perform boot-time migration writes that can overwrite newer restored state.");
 if (/chrome\.storage\.local\.set\([^\n]*secret/i.test(runtime)) throw new Error("Connection secrets must not be written to chrome.storage.local.");
 
 const ui = await readFile("src/connections-ui.js", "utf8");
@@ -44,6 +50,7 @@ if (!css.includes("prefers-reduced-motion")) throw new Error("Connection UI must
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
 if (pkg.scripts?.["connections-smoke"] !== "node scripts/connections-smoke.mjs") throw new Error("Connection smoke must stay wired in package.json.");
+if (pkg.scripts?.["connections-migration-race-check"] !== "node scripts/connections-migration-race-check.mjs") throw new Error("Connection migration race regression must stay wired in package.json.");
 if (!String(pkg.scripts?.check || "").includes("connections-check.mjs")) throw new Error("npm run check must include named-connection contracts.");
 const workflow = await readFile(".github/workflows/quality.yml", "utf8");
 if (!workflow.includes("npm run connections-smoke")) throw new Error("Quality CI must execute installed-extension named-connection coverage.");

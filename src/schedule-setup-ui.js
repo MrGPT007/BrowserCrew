@@ -7,6 +7,7 @@ let approvedSkills = [];
 let connections = [];
 let activeConnectionId = null;
 let editingScheduleId = null;
+let setupHydrationPromise = null;
 
 window.addEventListener("DOMContentLoaded", () => {
   const card = document.querySelector("#schedulesPreviewCard");
@@ -14,8 +15,8 @@ window.addEventListener("DOMContentLoaded", () => {
   const capability = document.querySelector("#scheduleCapabilityStatus");
   if (!card || !setupButton || !capability || card.querySelector("#scheduleSetupPanel")) return;
 
-  setupButton.disabled = false;
-  setupButton.textContent = "Prepare a schedule";
+  setupButton.disabled = true;
+  setupButton.textContent = "Loading schedule setup…";
   capability.after(setupButton);
 
   const panel = createSetupPanel();
@@ -24,17 +25,14 @@ window.addEventListener("DOMContentLoaded", () => {
   if (reviewHeading) reviewHeading.before(panel, prepared);
   else setupButton.after(panel, prepared);
 
-  setupButton.addEventListener("click", openNewSchedule);
+  setupButton.addEventListener("click", () => openNewSchedule().catch((error) => announce(error.message || "BrowserCrew could not load schedule setup.")));
   panel.querySelector("#schedulePreset")?.addEventListener("change", renderRecurrenceFields);
   panel.querySelector("#scheduleSkill")?.addEventListener("change", renderBudgetSummary);
   panel.querySelector("#scheduleSaveDraft")?.addEventListener("click", savePreparedSchedule);
   panel.querySelector("#scheduleCancelDraft")?.addEventListener("click", closeScheduleSetup);
   prepared.querySelector("#preparedScheduleList")?.addEventListener("click", onPreparedScheduleAction);
 
-  Promise.all([loadApprovedSkills(), loadConnections(), loadPreparedSchedules()]).then(() => {
-    renderSetupChoices();
-    renderPreparedSchedules();
-  }).catch((error) => announce(error.message || "BrowserCrew could not load schedule setup."));
+  hydrateScheduleSetup().catch(() => {});
 });
 
 function createSetupPanel() {
@@ -143,6 +141,36 @@ async function loadPreparedSchedules() {
   preparedSchedules = (response.schedules || []).filter((schedule) => schedule.enabled === false);
 }
 
+function hydrateScheduleSetup() {
+  if (setupHydrationPromise) return setupHydrationPromise;
+  const setupButton = document.querySelector("#scheduleSetupButton");
+  if (setupButton) {
+    setupButton.disabled = true;
+    setupButton.textContent = "Loading schedule setup…";
+    setupButton.setAttribute("aria-busy", "true");
+  }
+
+  setupHydrationPromise = Promise.all([loadApprovedSkills(), loadConnections(), loadPreparedSchedules()])
+    .then(() => {
+      renderSetupChoices();
+      renderPreparedSchedules();
+      return true;
+    })
+    .catch((error) => {
+      if (setupButton) {
+        setupButton.disabled = false;
+        setupButton.textContent = "Retry schedule setup";
+      }
+      announce(error.message || "BrowserCrew could not load schedule setup.");
+      return false;
+    })
+    .finally(() => {
+      setupButton?.removeAttribute("aria-busy");
+      setupHydrationPromise = null;
+    });
+  return setupHydrationPromise;
+}
+
 function renderSetupChoices() {
   const skillSelect = document.querySelector("#scheduleSkill");
   const connectionSelect = document.querySelector("#scheduleConnection");
@@ -186,7 +214,9 @@ function renderPreparedSchedules() {
   }).join("");
 }
 
-function openNewSchedule() {
+async function openNewSchedule() {
+  const ready = await hydrateScheduleSetup();
+  if (!ready || !approvedSkills.length || !connections.length) return;
   editingScheduleId = null;
   const panel = document.querySelector("#scheduleSetupPanel");
   if (!panel) return;
