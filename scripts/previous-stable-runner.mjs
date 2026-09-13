@@ -44,6 +44,7 @@ const targets = [
   "schedule-binding-smoke.mjs",
   "schedule-grants-smoke.mjs",
   "schedule-resolvers-smoke.mjs",
+  "schedule-dispatch-runtime-smoke.mjs",
   "schedule-control-smoke.mjs"
 ];
 const report = {
