@@ -4,12 +4,13 @@ const SKILLS_PORT = "browsercrew-skills";
 let activeEditor = null;
 
 window.addEventListener("DOMContentLoaded", () => {
+  const card = document.querySelector("#versionedSkillsCard");
   const list = document.querySelector("#versionedSkillList");
-  if (!list) return;
+  if (!card || !list) return;
   enhanceDraftCards(list);
   const observer = new MutationObserver(() => enhanceDraftCards(list));
   observer.observe(list, { childList: true, subtree: true });
-  list.addEventListener("click", onReviewAction);
+  card.addEventListener("click", onReviewAction);
 });
 
 function enhanceDraftCards(list) {
@@ -45,9 +46,11 @@ async function openDraftReview(button) {
     });
     if (!response.ok || !response.skill) throw new Error(response.error?.message || "BrowserCrew could not load that draft.");
     if (response.skill.status !== "draft") throw new Error("Only a draft skill version can be edited.");
+    const host = document.querySelector("#versionedSkillsCard");
+    if (!host) throw new Error("BrowserCrew could not open the stable Skill review surface.");
     activeEditor?.remove();
     activeEditor = createDraftEditor(response.skill);
-    button.closest(".skill-card")?.append(activeEditor);
+    host.append(activeEditor);
     activeEditor.querySelector("[data-draft-title]")?.focus();
   } catch (error) {
     announce(error.message || "BrowserCrew could not open this draft for review.");
@@ -223,7 +226,7 @@ async function saveDraftReview(button) {
     const saved = await portRequest(SKILLS_PORT, { type: "saveDraft", skill: reviewed });
     if (!saved.ok) throw new Error(saved.error?.message || "BrowserCrew could not save this draft review.");
 
-    updateCard(editor.closest(".skill-card"), saved.skill);
+    updateCard(findSkillCard(saved.skill), saved.skill);
     closeDraftReview(editor);
     announce("Draft review saved. It is still a draft and has not gained any new permission.");
   } catch (error) {
@@ -231,6 +234,15 @@ async function saveDraftReview(button) {
   } finally {
     busy(button, false, "Save draft review");
   }
+}
+
+function findSkillCard(skill) {
+  if (!skill) return null;
+  for (const card of document.querySelectorAll("#versionedSkillList .skill-card")) {
+    const approve = card.querySelector("[data-approve-skill]");
+    if (approve?.dataset.approveSkill === skill.id && approve?.dataset.skillVersion === skill.version) return card;
+  }
+  return null;
 }
 
 function updateCard(card, skill) {

@@ -99,8 +99,13 @@ for (const phrase of [
   "This screen cannot add websites, actions, permissions, budgets, or runtime values.",
   "The final result check cannot be removed.",
   'type: "saveDraft"',
-  "Draft review saved. It is still a draft and has not gained any new permission."
+  "Draft review saved. It is still a draft and has not gained any new permission.",
+  'const card = document.querySelector("#versionedSkillsCard")',
+  'card.addEventListener("click", onReviewAction)',
+  "host.append(activeEditor)",
+  "findSkillCard(saved.skill)"
 ]) if (!uiSource.includes(phrase)) throw new Error(`Skill draft review UI safety contract missing: ${phrase}`);
+if (uiSource.includes('list.addEventListener("click", onReviewAction)')) throw new Error("Draft review actions must be delegated from the stable Skills card, not the replaceable version list.");
 
 const helperSource = await readFile("src/skills-draft-review.js", "utf8");
 for (const phrase of [
@@ -126,7 +131,7 @@ for (const phrase of [
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
 if (pkg.scripts?.["skills-draft-review-check"] !== "node scripts/skills-draft-review-check.mjs") throw new Error("skills-draft-review-check script must stay wired.");
-if (pkg.scripts?.["skill-draft-review-smoke"] !== "node scripts/skill-draft-review-smoke.mjs") throw new Error("skill-draft-review-smoke script must stay wired.");
+if (pkg.scripts?.["skill-draft-review-smoke"] !== "node scripts/skill-draft-review-smoke.mjs") throw new Error("skill-draft-review-smoke must stay wired.");
 if (!String(pkg.scripts?.check || "").includes("skills-draft-review-check.mjs")) throw new Error("npm run check must include skill draft review contracts.");
 
 console.log("BrowserCrew skill draft review contracts passed.");
