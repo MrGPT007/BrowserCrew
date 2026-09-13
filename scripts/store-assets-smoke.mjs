@@ -39,8 +39,10 @@ for (const icon of icons) {
 await copyFile(join(repoRoot, "src/assets/icons/browsercrew-128.png"), join(artifactDir, "browsercrew-icon-128.png"));
 
 const browser = await chromium.launch({ channel: "chromium", headless: true });
+let context;
 try {
-  const page = await browser.newPage({ viewport: { width: 440, height: 280 } });
+  context = await browser.newContext({ viewport: { width: 440, height: 280 } });
+  const page = await context.newPage();
   await page.setContent(`<!doctype html>
 <html><head><meta charset="utf-8"><style>
 *{box-sizing:border-box}html,body{margin:0;width:440px;height:280px;overflow:hidden;background:#f6f2ea;color:#171717;font-family:Arial,Helvetica,sans-serif}.tile{position:relative;width:440px;height:280px;padding:18px}.corner-a{position:absolute;left:0;top:0;width:94px;height:68px;background:#c9b7ff}.corner-b{position:absolute;right:0;bottom:0;width:104px;height:72px;background:#9be3bd}.card{position:relative;width:404px;height:244px;background:#fffdf8;border:3px solid #171717;border-radius:18px;box-shadow:7px 7px 0 #171717;padding:23px 22px}.row{display:flex;align-items:center;gap:22px}.mark{width:88px;height:88px;display:grid;place-items:center;flex:0 0 auto;background:#86b6ff;border:3px solid #171717;border-radius:14px;box-shadow:4px 4px 0 #171717;font-size:56px;line-height:1;font-weight:900}.copy{min-width:0}.copy h1{margin:0;font-size:34px;line-height:.98;letter-spacing:-1.3px}.copy p{margin:9px 0 0;font-size:15px;font-weight:700;color:#5f5b55}.pills{display:flex;gap:7px;flex-wrap:wrap;margin-top:24px}.pill{border:2px solid #171717;border-radius:999px;padding:6px 10px;font-size:11px;line-height:1;font-weight:900;background:#eee9df}.pill.ai{background:#f4dc78}.pill.page{background:#c9b7ff}.pill.safe{background:#9be3bd}.version{position:absolute;right:22px;bottom:18px;font-size:10px;font-weight:900;color:#5f5b55}
@@ -49,6 +51,7 @@ try {
   assert.equal(await page.getByText("Your browser workbench").innerText(), "Your browser workbench");
   await page.screenshot({ path: promoPath, type: "png", fullPage: false });
 } finally {
+  if (context) await context.close().catch(() => {});
   await browser.close();
 }
 const promoDimensions = await pngDimensions(promoPath);
