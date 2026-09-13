@@ -11,6 +11,9 @@ globalThis.__browsercrewScheduleControlBoot = async (payloads = {}) => {
       if (input.mode === "preflight") return { grantsValid: true, providerAvailable: true, resourceFresh: true };
       const payload = payloadsBySchedule[input.schedule?.id];
       if (!payload) return { ok: false, error: { code: "TEST_PAYLOAD_MISSING" } };
+      if (payload.__browsercrewDirectResult === true) {
+        return { ok: true, task: { id: `schedule-control-direct:${input.schedule.id}:${crypto.randomUUID()}`, status: "completed" } };
+      }
       return runTask(payload);
     }
   });

@@ -46,7 +46,8 @@ const targets = [
   "schedule-grants-smoke.mjs",
   "schedule-resolvers-smoke.mjs",
   "schedule-dispatch-runtime-smoke.mjs",
-  "schedule-control-smoke.mjs"
+  "schedule-control-smoke.mjs",
+  "schedule-lifecycle-smoke.mjs"
 ];
 const report = {
   kind: "browsercrew.previous_stable_chrome_receipt",
