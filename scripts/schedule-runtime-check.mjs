@@ -256,7 +256,8 @@ for (const phrase of [
   "const scheduledFor = new Date(scheduledTime).toISOString()",
   "run.scheduledFor === scheduledFor",
   "if (duplicate) return",
-  "schedule.lastRunAt = index >= 0 ? schedules[index].lastRunAt ?? null : null",
+  "next.lastRunAt = current ? current.lastRunAt ?? null : null",
+  "assertScheduleTargetUnchanged(current, existingSnapshot)",
   'status: "paused", reason: "TASK_PAUSED"',
   'status: "cancelled", reason: "TASK_CANCELLED"'
 ]) assert.ok(runtimeSource.includes(phrase), `Persistent scheduler contract missing: ${phrase}`);
