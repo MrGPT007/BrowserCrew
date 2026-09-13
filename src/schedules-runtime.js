@@ -82,6 +82,9 @@ export async function saveSchedule(input) {
   const schedules = await listSchedules();
   const index = schedules.findIndex((item) => item.id === schedule.id);
   if (index < 0 && schedules.length >= MAX_SCHEDULES) throw coded("SCHEDULE_LIMIT", `BrowserCrew can keep up to ${MAX_SCHEDULES} schedules in this build.`);
+  // saveDraft can neither add nor replace authority references. A future dedicated
+  // grant lifecycle owns these refs; ordinary edits preserve only trusted stored refs.
+  schedule.grantRefs = index >= 0 && Array.isArray(schedules[index].grantRefs) ? structuredClone(schedules[index].grantRefs) : [];
   if (index >= 0) preservePreparedMetadata(schedule, schedules[index], skillResult.skill);
   if (schedule.enabled) assertPreparedScheduleMetadataForSkill(schedule, skillResult.skill);
   const now = new Date().toISOString();
