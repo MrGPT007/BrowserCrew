@@ -16,6 +16,7 @@ import {
   revokeScheduleGrantsForDeletedSchedule
 } from "./schedule-grants-runtime.js";
 import { withScheduleStateMutation } from "./schedule-state-mutation.js";
+import { withScheduleRunHistoryMutation } from "./schedule-run-history-mutation.js";
 
 const SCHEDULES_KEY = "browsercrew.schedules.v1";
 const SCHEDULE_RUNS_KEY = "browsercrew.scheduleRuns.v1";
@@ -24,7 +25,6 @@ const MAX_SCHEDULES = 100;
 const MAX_RUN_RECEIPTS = 500;
 const ALARM_PREFIX = "browsercrew.schedule.";
 const occurrenceLocks = new Map();
-let runHistoryMutation = null;
 let booted = false;
 let bootPromise = null;
 let dispatchScheduledRun = null;
@@ -280,8 +280,8 @@ export async function reviewMissedScheduleRun(runId, decision) {
     return { ok: false, run: receipt, error: { code: receipt.reason, message: "The schedule for this missed job no longer exists." } };
   }
 
-  const activeRun = runs.some((run) => run.id !== receipt.id && ["checking", "running"].includes(run.status));
-  const queuedRun = runs.some((run) => run.id !== receipt.id && run.status === "queued");
+  const activeRun = runs.some((run) => run.id !== receipt.id && run.scheduleId === receipt.scheduleId && ["checking", "running"].includes(run.status));
+  const queuedRun = runs.some((run) => run.id !== receipt.id && run.scheduleId === receipt.scheduleId && run.status === "queued");
   const concurrency = decideScheduleConcurrency(schedule, { activeRun, queuedRun });
   if (concurrency.action === "skip") {
     await settleWithoutDispatch(receipt, "skipped", concurrency.reason);
@@ -542,7 +542,7 @@ function scheduledTaskOutcome(result) {
 }
 
 async function appendRunReceipt(receipt) {
-  return withRunHistoryMutation(async () => {
+  return withScheduleRunHistoryMutation(async () => {
     const runs = await listScheduleRuns();
     runs.unshift(structuredClone(receipt));
     await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.slice(0, MAX_RUN_RECEIPTS) });
@@ -550,24 +550,13 @@ async function appendRunReceipt(receipt) {
 }
 
 async function updateRunReceipt(receipt) {
-  return withRunHistoryMutation(async () => {
+  return withScheduleRunHistoryMutation(async () => {
     const runs = await listScheduleRuns();
     const index = runs.findIndex((item) => item.id === receipt.id);
     if (index >= 0) runs[index] = structuredClone(receipt);
     else runs.unshift(structuredClone(receipt));
     await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.slice(0, MAX_RUN_RECEIPTS) });
   });
-}
-
-async function withRunHistoryMutation(work) {
-  const previous = runHistoryMutation || Promise.resolve();
-  const current = previous.catch(() => {}).then(work);
-  runHistoryMutation = current;
-  try {
-    return await current;
-  } finally {
-    if (runHistoryMutation === current) runHistoryMutation = null;
-  }
 }
 
 function assertScheduleTargetUnchanged(current, snapshot) {
