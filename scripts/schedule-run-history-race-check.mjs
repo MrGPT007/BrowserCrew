@@ -105,7 +105,10 @@ async function settleTurn() {
 }
 
 function isScheduleRunHistoryRead(keys) {
-  return keys === SCHEDULE_RUNS_KEY || (Array.isArray(keys) && keys.length === 1 && keys[0] === SCHEDULE_RUNS_KEY);
+  return keys === SCHEDULE_RUNS_KEY || (Array.isArray(keys) && (
+    (keys.length === 1 && keys[0] === SCHEDULE_RUNS_KEY) ||
+    (keys.length === 2 && keys[0] === SCHEDULE_RUNS_KEY && keys[1] === SCHEDULES_KEY)
+  ));
 }
 
 globalThis.chrome = {

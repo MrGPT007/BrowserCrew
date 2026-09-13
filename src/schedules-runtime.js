@@ -398,14 +398,14 @@ async function onAlarm(alarm) {
     };
 
     const claim = await claimScheduledOccurrence(schedule, receipt, missed);
-    if (claim.action === "duplicate") return;
+    if (claim.action === "duplicate" || claim.action === "stale") return;
     if (claim.action === "advance") {
       await advanceSchedule(scheduleId, firedAt);
       return;
     }
 
     try {
-      await dispatchReceipt(schedule, receipt);
+      await dispatchReceipt(claim.schedule, receipt);
     } finally {
       await advanceSchedule(scheduleId, firedAt);
       await drainQueuedRun(scheduleId);
@@ -415,8 +415,13 @@ async function onAlarm(alarm) {
 
 async function claimScheduledOccurrence(schedule, receipt, missed) {
   return withScheduleRunHistoryMutation(async () => {
-    const data = await chrome.storage.local.get([SCHEDULE_RUNS_KEY]);
+    const data = await chrome.storage.local.get([SCHEDULE_RUNS_KEY, SCHEDULES_KEY]);
     const runs = Array.isArray(data[SCHEDULE_RUNS_KEY]) ? data[SCHEDULE_RUNS_KEY] : [];
+    const schedules = Array.isArray(data[SCHEDULES_KEY]) ? data[SCHEDULES_KEY] : [];
+    const currentSchedule = schedules.find((item) => item.id === receipt.scheduleId);
+    if (!currentSchedule?.enabled) return { action: "stale" };
+    if (!sameScheduleExecutionSnapshot(currentSchedule, schedule)) return { action: "stale" };
+
     const duplicate = runs.some((run) => run.scheduleId === receipt.scheduleId && run.scheduledFor === receipt.scheduledFor);
     if (duplicate) return { action: "duplicate" };
 
@@ -443,7 +448,7 @@ async function claimScheduledOccurrence(schedule, receipt, missed) {
 
     const activeRun = runs.some((run) => run.scheduleId === receipt.scheduleId && ["checking", "running"].includes(run.status));
     const queuedRun = runs.some((run) => run.scheduleId === receipt.scheduleId && run.status === "queued");
-    const concurrency = decideScheduleConcurrency(schedule, { activeRun, queuedRun });
+    const concurrency = decideScheduleConcurrency(currentSchedule, { activeRun, queuedRun });
     if (concurrency.action === "skip") {
       receipt.status = "skipped";
       receipt.reason = concurrency.reason;
@@ -462,7 +467,7 @@ async function claimScheduledOccurrence(schedule, receipt, missed) {
     receipt.status = "checking";
     receipt.reason = null;
     await persistClaim();
-    return { action: "dispatch" };
+    return { action: "dispatch", schedule: structuredClone(currentSchedule) };
   });
 }
 
@@ -637,6 +642,19 @@ async function updateRunReceipt(receipt) {
     else runs.unshift(structuredClone(receipt));
     await chrome.storage.local.set({ [SCHEDULE_RUNS_KEY]: runs.slice(0, MAX_RUN_RECEIPTS) });
   });
+}
+
+function scheduleExecutionSnapshot(schedule) {
+  if (!schedule) return null;
+  const snapshot = structuredClone(schedule);
+  delete snapshot.lastRunAt;
+  delete snapshot.nextRunAt;
+  delete snapshot.updatedAt;
+  return snapshot;
+}
+
+function sameScheduleExecutionSnapshot(current, snapshot) {
+  return JSON.stringify(scheduleExecutionSnapshot(current)) === JSON.stringify(scheduleExecutionSnapshot(snapshot));
 }
 
 function assertScheduleTargetUnchanged(current, snapshot) {

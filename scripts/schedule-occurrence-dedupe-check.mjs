@@ -61,10 +61,19 @@ let firstDistinctConcurrencyReadResolve;
 let releaseDistinctConcurrencyReadsResolve;
 const firstDistinctConcurrencyReadEntered = new Promise((resolve) => { firstDistinctConcurrencyReadResolve = resolve; });
 const releaseDistinctConcurrencyReads = new Promise((resolve) => { releaseDistinctConcurrencyReadsResolve = resolve; });
+let pauseRaceScheduleReadBarrierEnabled = false;
+let pauseRaceScheduleReadCount = 0;
+let pauseRaceScheduleReadEnteredResolve = null;
+let releasePauseRaceScheduleReadResolve = null;
+let pauseRaceScheduleReadEntered = null;
+let releasePauseRaceScheduleRead = null;
 const clone = (value) => structuredClone(value);
 
 function isAtomicHistoryRead(keys) {
-  return Array.isArray(keys) && keys.length === 1 && keys[0] === SCHEDULE_RUNS_KEY;
+  return Array.isArray(keys) && (
+    (keys.length === 1 && keys[0] === SCHEDULE_RUNS_KEY) ||
+    (keys.length === 2 && keys[0] === SCHEDULE_RUNS_KEY && keys[1] === SCHEDULES_KEY)
+  );
 }
 
 function eventBucket(name) {
@@ -74,6 +83,20 @@ function eventBucket(name) {
     removeListener(listener) {
       const index = bucket.indexOf(listener);
       if (index >= 0) bucket.splice(index, 1);
+    }
+  };
+}
+
+function armPauseRaceScheduleReadBarrier() {
+  pauseRaceScheduleReadBarrierEnabled = true;
+  pauseRaceScheduleReadCount = 0;
+  pauseRaceScheduleReadEntered = new Promise((resolve) => { pauseRaceScheduleReadEnteredResolve = resolve; });
+  releasePauseRaceScheduleRead = new Promise((resolve) => { releasePauseRaceScheduleReadResolve = resolve; });
+  return {
+    entered: pauseRaceScheduleReadEntered,
+    release() {
+      pauseRaceScheduleReadBarrierEnabled = false;
+      releasePauseRaceScheduleReadResolve();
     }
   };
 }
@@ -107,6 +130,15 @@ globalThis.chrome = {
           if (distinctRunReadCount === 3) {
             firstDistinctConcurrencyReadResolve();
             await releaseDistinctConcurrencyReads;
+          }
+        }
+        if (keys === SCHEDULES_KEY && pauseRaceScheduleReadBarrierEnabled) {
+          pauseRaceScheduleReadCount += 1;
+          if (pauseRaceScheduleReadCount === 1) {
+            const snapshot = storage.has(SCHEDULES_KEY) ? { [SCHEDULES_KEY]: clone(storage.get(SCHEDULES_KEY)) } : {};
+            pauseRaceScheduleReadEnteredResolve();
+            await releasePauseRaceScheduleRead;
+            return snapshot;
           }
         }
         if (keys == null) return Object.fromEntries([...storage.entries()].map(([key, value]) => [key, clone(value)]));
@@ -204,6 +236,40 @@ assert.equal(
 );
 assert.equal(distinctRuns.every((run) => run.status === "completed"), true, "Both distinct queue_one receipts must complete rather than remain stranded in queued state.");
 
+const pauseRaceSchedule = { ...schedule, id: "pause-race", name: "pause race", enabled: true, nextRunAt: null };
+storage.set(SCHEDULES_KEY, [clone(pauseRaceSchedule)]);
+storage.set(SCHEDULE_RUNS_KEY, []);
+alarms.clear();
+dispatchCalls.length = 0;
+taskCalls.length = 0;
+await runtime.reconcileScheduleAlarms();
+
+const pauseRaceBarrier = armPauseRaceScheduleReadBarrier();
+const pauseRaceAlarm = { name: `browsercrew.schedule.${pauseRaceSchedule.id}`, scheduledTime: Date.now() };
+const staleDelivery = alarmListener(clone(pauseRaceAlarm));
+await pauseRaceBarrier.entered;
+
+const pauseResult = await runtime.setScheduleEnabled(pauseRaceSchedule.id, false);
+assert.equal(pauseResult.schedule.enabled, false, "The same schedule must be durably paused before the stale alarm callback resumes.");
+const pausedBeforeRelease = (await runtime.listSchedules()).find((item) => item.id === pauseRaceSchedule.id);
+assert.equal(pausedBeforeRelease?.enabled, false, "Pause must commit disabled state before the stale alarm callback reaches execution claim.");
+
+pauseRaceBarrier.release();
+await staleDelivery;
+
+const pausedAfterDelivery = (await runtime.listSchedules()).find((item) => item.id === pauseRaceSchedule.id);
+assert.equal(pausedAfterDelivery?.enabled, false, "A stale alarm callback must never re-enable a schedule that Pause already disabled.");
+assert.equal(
+  dispatchCalls.filter((call) => call.mode === "preflight").length,
+  0,
+  "An alarm callback using a stale enabled snapshot must not preflight after the same schedule has been paused."
+);
+assert.equal(
+  taskCalls.length,
+  0,
+  "An alarm callback using a stale enabled snapshot must not dispatch a task after the same schedule has been paused."
+);
+
 const runtimeSource = await readFile(new URL("../src/schedules-runtime.js", import.meta.url), "utf8");
 for (const phrase of [
   "const occurrenceLocks = new Map()",
@@ -212,7 +278,11 @@ for (const phrase of [
   "if (occurrenceLocks.get(key) === current) occurrenceLocks.delete(key)",
   "async function claimScheduledOccurrence(schedule, receipt, missed)",
   "const claim = await claimScheduledOccurrence(schedule, receipt, missed)",
-  "chrome.storage.local.get([SCHEDULE_RUNS_KEY])"
+  "chrome.storage.local.get([SCHEDULE_RUNS_KEY, SCHEDULES_KEY])",
+  "if (!currentSchedule?.enabled) return { action: \"stale\" }",
+  "if (!sameScheduleExecutionSnapshot(currentSchedule, schedule)) return { action: \"stale\" }",
+  "if (claim.action === \"duplicate\" || claim.action === \"stale\") return",
+  "await dispatchReceipt(claim.schedule, receipt)"
 ]) assert.ok(runtimeSource.includes(phrase), `Scheduler occurrence serialization contract missing: ${phrase}`);
 
 const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
