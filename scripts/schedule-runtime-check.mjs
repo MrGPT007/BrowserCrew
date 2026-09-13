@@ -274,6 +274,6 @@ console.log("BrowserCrew schedule runtime restart, dedupe, preflight, task-contr
 async function consumeAndFire(scheduleId, scheduledTime) {
   const name = `browsercrew.schedule.${scheduleId}`;
   const current = alarms.get(name) || { name, scheduledTime };
-  if (!current.periodInMinutes) alarms.delete(name);
+  if (!current.periodInMinutes) alarms.delete(name); // Chrome consumes one-shot alarms before delivery.
   await alarmListener({ ...clone(current), name, scheduledTime });
 }
