@@ -80,6 +80,7 @@ const grant = {
   scope: "schedule",
   status: "active",
   scheduleId: schedule.id,
+  providerRef: schedule.providerRef,
   skillRef: { id: skill.id, version: skill.version },
   origins: ["https://example.test"],
   resources: ["resource:orders"],
@@ -203,6 +204,7 @@ for (const [label, mutate, code] of [
   ["wrong scope", (copy) => { copy.scope = "one_run"; }, "SCHEDULE_GRANT_SCOPE_MISMATCH"],
   ["inactive", (copy) => { copy.status = "prepared"; }, "SCHEDULE_GRANT_SCOPE_MISMATCH"],
   ["other schedule", (copy) => { copy.scheduleId = "another-schedule"; }, "SCHEDULE_GRANT_SCOPE_MISMATCH"],
+  ["other provider", (copy) => { copy.providerRef = "provider-b"; }, "SCHEDULE_GRANT_SCOPE_MISMATCH"],
   ["unreferenced", (copy) => { copy.id = "grant-other"; }, "SCHEDULE_GRANT_REFERENCE_MISMATCH"]
 ]) {
   const badGrant = await inspectScheduleSkillReadiness({
@@ -293,6 +295,7 @@ for (const phrase of [
   "SCHEDULE_GRANT_REFERENCE_MISMATCH",
   'grant.status !== "active"',
   "grant.scheduleId !== schedule?.id",
+  "grant.providerRef !== schedule?.providerRef",
   "SCHEDULE_PROVIDER_CAPABILITY_MISSING",
   "SCHEDULE_RESOURCE_OUT_OF_SCOPE",
   "schedule.startResource.url",
