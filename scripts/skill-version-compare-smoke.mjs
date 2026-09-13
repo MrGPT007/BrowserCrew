@@ -145,6 +145,7 @@ try {
   await rm(tempRoot, { recursive: true, force: true }).catch(() => {});
 }
 
+function pass(name) { report.checks.push({ name, at: new Date().toISOString() }); }
 async function prepareExtension(target) {
   await cp(repoRoot, target, { recursive: true, filter: (source) => {
     const relative = source.slice(repoRoot.length).replace(/^[/\\]/, "");
