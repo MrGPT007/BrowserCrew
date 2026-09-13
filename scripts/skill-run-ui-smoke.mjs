@@ -102,7 +102,7 @@ try {
   const fragileCard = panel.locator('[data-skill-record="fragile-draft@@0.1.0"]');
   await approvedCard.waitFor({ state: "visible", timeout: timeoutMs });
   await fragileCard.waitFor({ state: "visible", timeout: timeoutMs });
-  await approvedCard.getByRole("button", { name: "Versions" }).waitFor({ state: "visible", timeout: timeoutMs });
+  await approvedCard.getByRole("button", { name: "Versions", exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
   await approvedCard.getByRole("button", { name: "Test / Run" }).waitFor({ state: "visible", timeout: timeoutMs });
   await fragileCard.getByRole("button", { name: "Test draft — no changes" }).waitFor({ state: "visible", timeout: timeoutMs });
   assert.equal(await approvedCard.locator("[data-test-draft-skill]").count(), 0, "Approved versions must not expose the draft-only Test button.");
@@ -111,7 +111,7 @@ try {
   assert.equal(await panel.locator('[data-skill-status="archived"] [data-test-draft-skill]').count(), 0, "Archived versions must not expose draft Test.");
   pass("My Skills separates approved Test / Run from observation-only Draft Test, and exposes Run only on approved exact versions");
 
-  await approvedCard.getByRole("button", { name: "Versions" }).click();
+  await approvedCard.getByRole("button", { name: "Versions", exact: true }).click();
   await panel.locator("#skillVersionsPanel").waitFor({ state: "visible", timeout: timeoutMs });
   assert.equal(await panel.locator("#skillVersionsList [data-version-row]").count(), 2);
   assert.match(await panel.locator("#skillVersionsList").innerText(), /v1\.0\.0 · Approved/);
