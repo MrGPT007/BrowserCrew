@@ -74,13 +74,14 @@ export async function revokeScheduleGrantById(scheduleId, grantId) {
   const grants = Array.isArray(data[SCHEDULE_GRANTS_KEY]) ? data[SCHEDULE_GRANTS_KEY] : [];
   const scheduleIndex = schedules.findIndex((item) => item.id === scheduleId);
   if (scheduleIndex < 0) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
+  const schedule = schedules[scheduleIndex];
+  if (schedule.enabled) throw coded("SCHEDULE_GRANT_PAUSE_REQUIRED", "Pause the schedule before revoking future permission.");
   const grantIndex = grants.findIndex((item) => item.id === grantId);
   if (grantIndex < 0) throw coded("SCHEDULE_GRANT_NOT_FOUND", "That schedule permission receipt could not be found.");
   if (grants[grantIndex].scheduleId !== scheduleId) throw coded("SCHEDULE_GRANT_SCHEDULE_MISMATCH", "That permission receipt belongs to a different schedule.");
 
   const revoked = revokeScheduleGrant(grants[grantIndex], { revokedAt: now, reason: "user_revoked" });
   const nextGrants = grants.map((item, itemIndex) => itemIndex === grantIndex ? revoked : item);
-  const schedule = schedules[scheduleIndex];
   const nextSchedule = { ...schedule, grantRefs: (schedule.grantRefs || []).filter((id) => id !== grantId), updatedAt: now };
   const nextSchedules = schedules.map((item, itemIndex) => itemIndex === scheduleIndex ? nextSchedule : item);
   await chrome.storage.local.set({ [SCHEDULES_KEY]: nextSchedules, [SCHEDULE_GRANTS_KEY]: nextGrants });

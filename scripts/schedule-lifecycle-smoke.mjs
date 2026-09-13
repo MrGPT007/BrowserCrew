@@ -4,6 +4,8 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { createPreparedScheduleMetadata } from "../src/schedule-prepared-metadata.js";
+import { createScheduleGrant } from "../src/schedule-grants-contract.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const artifactDir = join(repoRoot, "artifacts", "schedule-lifecycle-smoke");
@@ -13,6 +15,7 @@ const userDataDir = join(tempRoot, "profile");
 const SKILL_LIBRARY_KEY = "browsercrew.skillLibrary.v1";
 const SCHEDULES_KEY = "browsercrew.schedules.v1";
 const SCHEDULE_RUNS_KEY = "browsercrew.scheduleRuns.v1";
+const SCHEDULE_GRANTS_KEY = "browsercrew.scheduleGrants.v1";
 const report = { kind: "browsercrew.schedule_lifecycle_evidence", startedAt: new Date().toISOString(), checks: [] };
 let context;
 
@@ -47,7 +50,7 @@ try {
     version: "1.0.0",
     status: "approved",
     title: "Schedule lifecycle proof",
-    description: "Read-only approved Skill for Run now and Pause lifecycle proof.",
+    description: "Read-only approved Skill for Run now, Pause, and grant revocation lifecycle proof.",
     inputs: {},
     allowedOrigins: ["https://example.com"],
     actionClasses: ["read"],
@@ -59,28 +62,43 @@ try {
     provenance: { source: "test", createdAt: now },
     approval: { approvedAt: now, approvedBy: "user" }
   };
-  const schedule = {
+  const preparedMetadata = createPreparedScheduleMetadata({ skill, pageUrl: "https://example.com/", reviewedAt: now });
+  const preparedSchedule = {
     schemaVersion: 1,
     id: "schedule-lifecycle-active",
     name: "Lifecycle active schedule",
-    enabled: true,
+    enabled: false,
     skillRef: { id: skill.id, version: skill.version },
     timezone: "UTC",
     recurrence: { kind: "interval", everyMinutes: 60 },
-    nextRunAt,
+    nextRunAt: null,
     lastRunAt: null,
     missedRunPolicy: "skip",
     concurrencyPolicy: "skip_if_running",
     providerRef: "schedule-lifecycle-provider",
     grantRefs: [],
     budgets: { maxSteps: 3, maxMinutes: 3 },
+    ...preparedMetadata,
     createdAt: now,
     updatedAt: now
   };
+  const grant = createScheduleGrant({
+    id: "schedule-grant:lifecycle",
+    schedule: preparedSchedule,
+    skill,
+    createdAt: now,
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString()
+  });
+  const schedule = { ...preparedSchedule, enabled: true, nextRunAt, grantRefs: [grant.id], updatedAt: now };
 
-  await panel.evaluate(async ({ skill, schedule, keys }) => {
-    await chrome.storage.local.set({ [keys.skill]: [skill], [keys.schedules]: [schedule], [keys.runs]: [] });
-  }, { skill, schedule, keys: { skill: SKILL_LIBRARY_KEY, schedules: SCHEDULES_KEY, runs: SCHEDULE_RUNS_KEY } });
+  await panel.evaluate(async ({ skill, schedule, grant, keys }) => {
+    await chrome.storage.local.set({
+      [keys.skill]: [skill],
+      [keys.schedules]: [schedule],
+      [keys.runs]: [],
+      [keys.grants]: [grant]
+    });
+  }, { skill, schedule, grant, keys: { skill: SKILL_LIBRARY_KEY, schedules: SCHEDULES_KEY, runs: SCHEDULE_RUNS_KEY, grants: SCHEDULE_GRANTS_KEY } });
 
   const boot = await worker.evaluate((scheduleId) => {
     const bootScheduler = globalThis.__browsercrewScheduleControlBoot;
@@ -94,6 +112,18 @@ try {
   assert.equal(capabilities.ok, true);
   assert.equal(capabilities.schedulerReady, true);
   pass("Schedule control runtime exposes activation only when the live scheduler listener exists");
+
+  const alarmBeforeRevoke = await worker.evaluate((scheduleId) => chrome.alarms.get(`browsercrew.schedule.${scheduleId}`), schedule.id);
+  assert.ok(alarmBeforeRevoke, "Enabled schedule must have an exact live alarm before revocation is tested.");
+  const blockedRevoke = await portRequest(panel, "browsercrew-schedule-grants", { type: "revoke", scheduleId: schedule.id, grantId: grant.id });
+  assert.equal(blockedRevoke.ok, false);
+  assert.equal(blockedRevoke.error?.code, "SCHEDULE_GRANT_PAUSE_REQUIRED");
+  const beforePause = await storedLifecycleState(panel, schedule.id, grant.id);
+  assert.equal(beforePause.schedule.enabled, true);
+  assert.deepEqual(beforePause.schedule.grantRefs, [grant.id]);
+  assert.equal(beforePause.grant.status, "active");
+  assert.equal(beforePause.grant.revoked, false);
+  pass("Active schedule blocks standalone grant revocation while its alarm is live");
 
   const runNow = await portRequest(panel, "browsercrew-schedule-controls", { type: "runNow", scheduleId: schedule.id });
   assert.equal(runNow.ok, true, JSON.stringify(runNow));
@@ -122,6 +152,19 @@ try {
   assert.equal(alarmAfterPause, undefined, "Pause must clear the exact Chrome alarm.");
   pass("Pause disabled the schedule and cleared its exact Chrome alarm while preserving setup/history");
 
+  const revoke = await portRequest(panel, "browsercrew-schedule-grants", { type: "revoke", scheduleId: schedule.id, grantId: grant.id });
+  assert.equal(revoke.ok, true, JSON.stringify(revoke));
+  assert.equal(revoke.schedule.enabled, false);
+  assert.deepEqual(revoke.schedule.grantRefs, []);
+  assert.equal(revoke.grant.status, "revoked");
+  assert.equal(revoke.grant.revoked, true);
+  const afterRevoke = await storedLifecycleState(panel, schedule.id, grant.id);
+  assert.equal(afterRevoke.schedule.enabled, false);
+  assert.deepEqual(afterRevoke.schedule.grantRefs, []);
+  assert.equal(afterRevoke.grant.status, "revoked");
+  assert.equal(afterRevoke.grant.revokedReason, "user_revoked");
+  pass("Paused schedule can revoke future permission only after its live alarm is cleared");
+
   const pausedRun = await portRequest(panel, "browsercrew-schedule-controls", { type: "runNow", scheduleId: schedule.id });
   assert.equal(pausedRun.ok, false);
   assert.equal(pausedRun.error?.code, "SCHEDULE_PAUSED");
@@ -146,6 +189,16 @@ try {
 }
 
 function pass(name, details = null) { report.checks.push({ name, details, at: new Date().toISOString() }); }
+
+async function storedLifecycleState(panel, scheduleId, grantId) {
+  return panel.evaluate(async ({ schedulesKey, grantsKey, scheduleId, grantId }) => {
+    const data = await chrome.storage.local.get([schedulesKey, grantsKey]);
+    return {
+      schedule: (data[schedulesKey] || []).find((item) => item.id === scheduleId) || null,
+      grant: (data[grantsKey] || []).find((item) => item.id === grantId) || null
+    };
+  }, { schedulesKey: SCHEDULES_KEY, grantsKey: SCHEDULE_GRANTS_KEY, scheduleId, grantId });
+}
 
 async function prepareTestExtension(target) {
   await cp(repoRoot, target, {
