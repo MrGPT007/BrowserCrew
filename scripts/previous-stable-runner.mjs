@@ -31,6 +31,7 @@ const targets = [
   "workspace-stop-smoke.mjs",
   "watch-me-smoke.mjs",
   "skill-draft-review-smoke.mjs",
+  "skill-library-lifecycle-smoke.mjs",
   "schedule-review-smoke.mjs",
   "schedule-setup-smoke.mjs"
 ];
@@ -67,10 +68,7 @@ try {
     const source = await readFile(originalPath, "utf8");
     const launchMarker = 'channel: "chromium",';
     assert.ok(source.includes(launchMarker), `${target} no longer contains the controlled Playwright Chromium launch marker.`);
-    const transformed = source.replaceAll(
-      launchMarker,
-      "executablePath: process.env.BROWSERCREW_BROWSER_EXECUTABLE,"
-    );
+    const transformed = source.replaceAll(launchMarker, "executablePath: process.env.BROWSERCREW_BROWSER_EXECUTABLE,");
     assert.notEqual(transformed, source, `${target} did not receive the previous-stable executable override.`);
     await writeFile(runtimePath, transformed);
     const startedAt = new Date().toISOString();
@@ -86,14 +84,7 @@ try {
     } catch (error) {
       if (error?.stdout) process.stdout.write(error.stdout);
       if (error?.stderr) process.stderr.write(error.stderr);
-      report.targets.push({
-        target,
-        ok: false,
-        startedAt,
-        completedAt: new Date().toISOString(),
-        exitCode: error?.code ?? null,
-        message: error?.message || String(error)
-      });
+      report.targets.push({ target, ok: false, startedAt, completedAt: new Date().toISOString(), exitCode: error?.code ?? null, message: error?.message || String(error) });
       throw new Error(`Chrome ${expectedVersion} compatibility failed in ${target}: ${error?.message || error}`);
     } finally {
       await rm(runtimePath, { force: true }).catch(() => {});
