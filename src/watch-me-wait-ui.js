@@ -1,11 +1,15 @@
 const WATCH_PORT = "browsercrew-watch-control";
 let waitBusy = false;
 let waitStateTimer = null;
+let waitMountObserver = null;
 
-window.addEventListener("DOMContentLoaded", () => {
+function mountWaitControl() {
   const running = document.querySelector("#watchMeRunning");
-  const completion = document.querySelector("#watchMeCompletionText")?.closest("label") || document.querySelector("#watchMeCompletionText");
-  if (!running || running.querySelector("#watchMeWaitText")) return;
+  if (!running) return false;
+  if (running.querySelector("#watchMeWaitControl")) {
+    startWaitStateSync();
+    return true;
+  }
 
   const box = document.createElement("div");
   box.className = "selection-summary";
@@ -35,14 +39,47 @@ window.addEventListener("DOMContentLoaded", () => {
   button.addEventListener("click", rememberWait);
 
   box.append(label, helper, button);
-  const completionInput = document.querySelector("#watchMeCompletionText");
-  if (completionInput?.parentElement) completionInput.parentElement.before(box);
-  else running.append(box);
+  const completionInput = running.querySelector("#watchMeCompletionText");
+  if (completionInput) completionInput.before(box);
+  else running.prepend(box);
 
-  waitStateTimer = setInterval(syncWaitState, 500);
-  window.addEventListener("unload", () => clearInterval(waitStateTimer), { once: true });
+  startWaitStateSync();
   syncWaitState();
-});
+  return true;
+}
+
+function startWaitStateSync() {
+  if (waitStateTimer) return;
+  waitStateTimer = setInterval(() => {
+    if (!document.querySelector("#watchMeWaitControl")) mountWaitControl();
+    syncWaitState();
+  }, 500);
+}
+
+function ensureWaitControl() {
+  if (mountWaitControl()) {
+    waitMountObserver?.disconnect();
+    waitMountObserver = null;
+    return;
+  }
+  if (waitMountObserver) return;
+  waitMountObserver = new MutationObserver(() => {
+    if (!mountWaitControl()) return;
+    waitMountObserver?.disconnect();
+    waitMountObserver = null;
+  });
+  waitMountObserver.observe(document.documentElement, { childList: true, subtree: true });
+}
+
+if (document.readyState === "loading") window.addEventListener("DOMContentLoaded", ensureWaitControl, { once: true });
+else ensureWaitControl();
+
+window.addEventListener("unload", () => {
+  if (waitStateTimer) clearInterval(waitStateTimer);
+  waitStateTimer = null;
+  waitMountObserver?.disconnect();
+  waitMountObserver = null;
+}, { once: true });
 
 function syncWaitState() {
   const button = document.querySelector("#watchMeRememberWaitButton");

@@ -52,12 +52,20 @@ assert.equal(ui.includes('type: "resume"'), false, "Scope-review UI must never b
 
 const waitUi = await readFile("src/watch-me-wait-ui.js", "utf8");
 for (const phrase of [
+  'function mountWaitControl()',
+  'const running = document.querySelector("#watchMeRunning")',
+  'running.querySelector("#watchMeWaitControl")',
+  'const completionInput = running.querySelector("#watchMeCompletionText")',
+  'completionInput.before(box)',
+  'new MutationObserver',
+  'document.readyState === "loading"',
   'Wait for visible text',
   'Remember this wait',
   'public status or heading',
   'type: "markWait", visibleText',
   'BrowserCrew will require that visible text during replay'
 ]) assert.ok(waitUi.includes(phrase), `Watch Me wait UI contract missing: ${phrase}`);
+assert.equal(waitUi.includes("completionInput.parentElement.before(box)"), false, "Wait UI must stay owned by the active Watch Me running container instead of mounting beside it.");
 assert.equal(waitUi.includes("chrome.permissions.request"), false, "Remembering a wait must not request or widen site permission.");
 assert.equal(waitUi.includes("setTimeout(() => port.postMessage"), false, "Remembering a wait must not simulate timing instead of recording an observable condition.");
 
@@ -81,6 +89,7 @@ for (const phrase of [
   'kind === "navigate" && event.origin === fixtureB.origin',
   'runSkill(panel',
   'Cross-site replay produces a durable exact-version completed run receipt',
+  '#watchMeWaitControl',
   '#watchMeRememberWaitButton',
   'kind === "waitFor" && event.expect?.visibleText === "Export ready"',
   'data-preview-before-ready',
