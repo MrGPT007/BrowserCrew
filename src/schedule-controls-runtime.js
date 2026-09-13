@@ -63,7 +63,7 @@ export async function runScheduleNow(scheduleId) {
   });
 
   try {
-    const result = await reviewMissedScheduleRun(receipt.id, "run_once");
+    const result = await reviewMissedScheduleRun(receipt.id, "run_once", schedule);
     return { ...result, manual: true };
   } catch (error) {
     if (error?.code === "SCHEDULE_DISPATCH_REQUIRED") await removeManualReceipt(receipt.id);

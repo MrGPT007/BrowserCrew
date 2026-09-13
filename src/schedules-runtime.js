@@ -249,7 +249,7 @@ export async function listScheduleRuns(scheduleId = null) {
   return scheduleId ? runs.filter((run) => run.scheduleId === scheduleId) : runs;
 }
 
-export async function reviewMissedScheduleRun(runId, decision) {
+export async function reviewMissedScheduleRun(runId, decision, expectedScheduleSnapshot = null) {
   if (!runId) throw coded("SCHEDULE_RUN_ID_REQUIRED", "Choose the missed scheduled job you want to review.");
   if (!["run_once", "skip"].includes(decision)) throw coded("SCHEDULE_REVIEW_DECISION_INVALID", "Choose whether to run this missed job once or skip it.");
 
@@ -299,6 +299,13 @@ export async function reviewMissedScheduleRun(runId, decision) {
       receipt.completedAt = new Date().toISOString();
       await persistClaim();
       return { action: "done", ok: false, receipt, message: "This schedule was paused before the reviewed job could start." };
+    }
+    if (expectedScheduleSnapshot && !sameScheduleExecutionSnapshot(schedule, expectedScheduleSnapshot)) {
+      receipt.status = "blocked";
+      receipt.reason = "SCHEDULE_CHANGED_RETRY";
+      receipt.completedAt = new Date().toISOString();
+      await persistClaim();
+      return { action: "done", ok: false, receipt, message: "This schedule changed after Run now was requested. Review the latest schedule and try again." };
     }
 
     const activeRun = runs.some((run) => run.id !== receipt.id && run.scheduleId === receipt.scheduleId && ["checking", "running"].includes(run.status));
