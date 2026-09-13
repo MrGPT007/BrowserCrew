@@ -22,6 +22,7 @@ const targets = [
   "workspace-stop-smoke.mjs",
   "watch-me-smoke.mjs",
   "watch-me-resilience-smoke.mjs",
+  "watch-me-event-trust-smoke.mjs",
   "skill-draft-review-smoke.mjs",
   "skill-library-lifecycle-smoke.mjs",
   "skill-portable-smoke.mjs",
@@ -75,7 +76,9 @@ const pkg = JSON.parse(await readFile("package.json", "utf8"));
 if (pkg.scripts?.["previous-stable-check"] !== "node scripts/previous-stable-check.mjs") throw new Error("previous-stable-check script must stay wired.");
 if (pkg.scripts?.["previous-stable-smoke"] !== "node scripts/previous-stable-runner.mjs") throw new Error("previous-stable-smoke script must stay wired.");
 if (pkg.scripts?.["watch-me-smoke"] !== "node scripts/watch-me-smoke.mjs") throw new Error("watch-me-smoke must stay wired for current and previous-stable browser coverage.");
-if (pkg.scripts?.["watch-me-resilience-smoke"] !== "node scripts/watch-me-resilience-smoke.mjs") throw new Error("watch-me-resilience-smoke must stay wired for current and previous-stable browser coverage.");
+const watchResilienceSmoke = String(pkg.scripts?.["watch-me-resilience-smoke"] || "");
+if (!watchResilienceSmoke.includes("node scripts/watch-me-resilience-smoke.mjs") || !watchResilienceSmoke.includes("node scripts/watch-me-event-trust-smoke.mjs")) throw new Error("watch-me-resilience-smoke must keep restart and hostile page-event trust coverage together on current Chrome.");
+if (pkg.scripts?.["watch-me-event-trust-smoke"] !== "node scripts/watch-me-event-trust-smoke.mjs") throw new Error("watch-me-event-trust-smoke must stay directly runnable for Chrome 152 coverage.");
 if (pkg.scripts?.["skill-draft-review-smoke"] !== "node scripts/skill-draft-review-smoke.mjs") throw new Error("skill-draft-review-smoke must stay wired for current and previous-stable browser coverage.");
 if (pkg.scripts?.["skill-library-lifecycle-smoke"] !== "node scripts/skill-library-lifecycle-smoke.mjs") throw new Error("skill-library-lifecycle-smoke must stay wired for current and previous-stable browser coverage.");
 if (pkg.scripts?.["skill-portable-smoke"] !== "node scripts/skill-portable-smoke.mjs") throw new Error("skill-portable-smoke must stay wired for current and previous-stable browser coverage.");

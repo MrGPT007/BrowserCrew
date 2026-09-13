@@ -130,6 +130,7 @@ export function installWatchPageRecorder() {
   };
   const editable = (element) => element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement || element?.isContentEditable;
   const onClick = (event) => {
+    if (event.isTrusted !== true) return;
     const download = event.target?.closest?.("a[download]");
     if (download instanceof HTMLAnchorElement) {
       const target = describe(download);
@@ -145,6 +146,7 @@ export function installWatchPageRecorder() {
     send({ kind: "click", target: description });
   };
   const onChange = (event) => {
+    if (event.isTrusted !== true) return;
     const target = event.target;
     if (!(target instanceof Element)) return;
     if (target instanceof HTMLInputElement && (target.type || "").toLowerCase() === "hidden") return;
