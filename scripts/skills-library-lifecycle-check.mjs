@@ -80,6 +80,7 @@ if (!sidepanel.includes('import "./skills-library-lifecycle-ui.js"')) throw new 
 
 const runner = await readFile("scripts/previous-stable-runner.mjs", "utf8");
 if (!runner.includes('"skill-library-lifecycle-smoke.mjs"')) throw new Error("Chrome 152 matrix must include skill library lifecycle smoke coverage.");
+if (!runner.includes('"skill-version-compare-smoke.mjs"')) throw new Error("Chrome 152 matrix must include exact-version Compare smoke coverage.");
 
 const workflow = await readFile(".github/workflows/quality.yml", "utf8");
 for (const phrase of [
@@ -90,7 +91,9 @@ for (const phrase of [
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
 if (pkg.scripts?.["skills-library-lifecycle-check"] !== "node scripts/skills-library-lifecycle-check.mjs") throw new Error("skills-library-lifecycle-check must stay wired.");
-if (pkg.scripts?.["skill-library-lifecycle-smoke"] !== "node scripts/skill-library-lifecycle-smoke.mjs") throw new Error("skill-library-lifecycle-smoke must stay wired.");
+const lifecycleSmoke = String(pkg.scripts?.["skill-library-lifecycle-smoke"] || "");
+if (!lifecycleSmoke.includes("node scripts/skill-library-lifecycle-smoke.mjs") || !lifecycleSmoke.includes("node scripts/skill-version-compare-smoke.mjs")) throw new Error("skill-library-lifecycle-smoke must keep lifecycle and exact-version Compare browser proofs together on current Chrome.");
+if (pkg.scripts?.["skill-version-compare-smoke"] !== "node scripts/skill-version-compare-smoke.mjs") throw new Error("skill-version-compare-smoke must stay directly runnable for Chrome 152 coverage.");
 if (!String(pkg.scripts?.check || "").includes("skills-library-lifecycle-check.mjs")) throw new Error("npm run check must include Skill library lifecycle contracts.");
 
 console.log("BrowserCrew Skill library lifecycle contracts passed.");

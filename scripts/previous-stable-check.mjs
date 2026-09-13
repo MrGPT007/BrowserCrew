@@ -25,6 +25,7 @@ const targets = [
   "watch-me-event-trust-smoke.mjs",
   "skill-draft-review-smoke.mjs",
   "skill-library-lifecycle-smoke.mjs",
+  "skill-version-compare-smoke.mjs",
   "skill-portable-smoke.mjs",
   "skill-run-ui-smoke.mjs",
   "skill-completion-check-smoke.mjs",
@@ -80,7 +81,9 @@ const watchResilienceSmoke = String(pkg.scripts?.["watch-me-resilience-smoke"] |
 if (!watchResilienceSmoke.includes("node scripts/watch-me-resilience-smoke.mjs") || !watchResilienceSmoke.includes("node scripts/watch-me-event-trust-smoke.mjs")) throw new Error("watch-me-resilience-smoke must keep restart and hostile page-event trust coverage together on current Chrome.");
 if (pkg.scripts?.["watch-me-event-trust-smoke"] !== "node scripts/watch-me-event-trust-smoke.mjs") throw new Error("watch-me-event-trust-smoke must stay directly runnable for Chrome 152 coverage.");
 if (pkg.scripts?.["skill-draft-review-smoke"] !== "node scripts/skill-draft-review-smoke.mjs") throw new Error("skill-draft-review-smoke must stay wired for current and previous-stable browser coverage.");
-if (pkg.scripts?.["skill-library-lifecycle-smoke"] !== "node scripts/skill-library-lifecycle-smoke.mjs") throw new Error("skill-library-lifecycle-smoke must stay wired for current and previous-stable browser coverage.");
+const lifecycleSmoke = String(pkg.scripts?.["skill-library-lifecycle-smoke"] || "");
+if (!lifecycleSmoke.includes("node scripts/skill-library-lifecycle-smoke.mjs") || !lifecycleSmoke.includes("node scripts/skill-version-compare-smoke.mjs")) throw new Error("skill-library-lifecycle-smoke must keep lifecycle and exact-version Compare coverage together on current Chrome.");
+if (pkg.scripts?.["skill-version-compare-smoke"] !== "node scripts/skill-version-compare-smoke.mjs") throw new Error("skill-version-compare-smoke must stay directly runnable for Chrome 152 coverage.");
 if (pkg.scripts?.["skill-portable-smoke"] !== "node scripts/skill-portable-smoke.mjs") throw new Error("skill-portable-smoke must stay wired for current and previous-stable browser coverage.");
 const runUiSmoke = String(pkg.scripts?.["skill-run-ui-smoke"] || "");
 if (!runUiSmoke.includes("node scripts/skill-run-ui-smoke.mjs") || !runUiSmoke.includes("node scripts/skill-completion-check-smoke.mjs") || !runUiSmoke.includes("node scripts/skill-replay-resilience-smoke.mjs")) throw new Error("skill-run-ui-smoke must keep approved/draft Test/Run, bounded completion-check, and replay-restart coverage together on current Chrome.");

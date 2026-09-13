@@ -34,6 +34,7 @@ const targets = [
   "watch-me-event-trust-smoke.mjs",
   "skill-draft-review-smoke.mjs",
   "skill-library-lifecycle-smoke.mjs",
+  "skill-version-compare-smoke.mjs",
   "skill-portable-smoke.mjs",
   "skill-run-ui-smoke.mjs",
   "skill-completion-check-smoke.mjs",
