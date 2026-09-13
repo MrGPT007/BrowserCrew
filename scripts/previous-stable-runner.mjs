@@ -28,7 +28,26 @@ const targets = [
   "accessibility-smoke.mjs",
   "mcp-smoke.mjs",
   "c5-smoke.mjs",
-  "workspace-stop-smoke.mjs"
+  "workspace-stop-smoke.mjs",
+  "watch-me-smoke.mjs",
+  "watch-me-resilience-smoke.mjs",
+  "watch-me-event-trust-smoke.mjs",
+  "watch-me-scope-review-smoke.mjs",
+  "skill-draft-review-smoke.mjs",
+  "skill-library-lifecycle-smoke.mjs",
+  "skill-version-compare-smoke.mjs",
+  "skill-portable-smoke.mjs",
+  "skill-run-ui-smoke.mjs",
+  "skill-completion-check-smoke.mjs",
+  "skill-replay-resilience-smoke.mjs",
+  "schedule-review-smoke.mjs",
+  "schedule-setup-smoke.mjs",
+  "schedule-binding-smoke.mjs",
+  "schedule-grants-smoke.mjs",
+  "schedule-resolvers-smoke.mjs",
+  "schedule-dispatch-runtime-smoke.mjs",
+  "schedule-control-smoke.mjs",
+  "schedule-lifecycle-smoke.mjs"
 ];
 const report = {
   kind: "browsercrew.previous_stable_chrome_receipt",
@@ -63,10 +82,7 @@ try {
     const source = await readFile(originalPath, "utf8");
     const launchMarker = 'channel: "chromium",';
     assert.ok(source.includes(launchMarker), `${target} no longer contains the controlled Playwright Chromium launch marker.`);
-    const transformed = source.replaceAll(
-      launchMarker,
-      "executablePath: process.env.BROWSERCREW_BROWSER_EXECUTABLE,"
-    );
+    const transformed = source.replaceAll(launchMarker, "executablePath: process.env.BROWSERCREW_BROWSER_EXECUTABLE,");
     assert.notEqual(transformed, source, `${target} did not receive the previous-stable executable override.`);
     await writeFile(runtimePath, transformed);
     const startedAt = new Date().toISOString();
@@ -82,14 +98,7 @@ try {
     } catch (error) {
       if (error?.stdout) process.stdout.write(error.stdout);
       if (error?.stderr) process.stderr.write(error.stderr);
-      report.targets.push({
-        target,
-        ok: false,
-        startedAt,
-        completedAt: new Date().toISOString(),
-        exitCode: error?.code ?? null,
-        message: error?.message || String(error)
-      });
+      report.targets.push({ target, ok: false, startedAt, completedAt: new Date().toISOString(), exitCode: error?.code ?? null, message: error?.message || String(error) });
       throw new Error(`Chrome ${expectedVersion} compatibility failed in ${target}: ${error?.message || error}`);
     } finally {
       await rm(runtimePath, { force: true }).catch(() => {});

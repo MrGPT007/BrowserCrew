@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const supplierFixtures = ["a", "b", "c", "d", "e"].map((name) => `tests/fixtures/supplier-${name}.html`);
 const jsModules = [
-  "src/background.js", "src/sidepanel.js", "src/service-worker.js",
+  "src/background.js", "src/sidepanel.js", "src/sidepanel-legacy.js", "src/skills-automation-ui.js", "src/service-worker.js",
   "src/form-write.js", "src/form-ui.js", "src/workspace-ui-core.js", "src/compare-read.js", "src/compare-ui.js",
   "scripts/browser-smoke.mjs"
 ];
@@ -67,8 +67,12 @@ for (const formUiContract of ['data-job-mode="form"', 'id="formPreviewCard"', "A
 }
 if (html.includes('data-view="agents"')) throw new Error("Do not expose an Agents tab before the bounded agent runtime exists.");
 
-const panel = await readFile("src/sidepanel.js", "utf8");
-if (!panel.includes("renderTools") || !panel.includes("renderSkills") || !panel.includes("renderMemory")) throw new Error("Workbench views must be wired to real data.");
+const panelEntry = await readFile("src/sidepanel.js", "utf8");
+for (const panelImport of ['import "./skills-automation-ui.js"', 'import "./sidepanel-legacy.js"']) {
+  if (!panelEntry.includes(panelImport)) throw new Error(`Sidepanel entry point is missing module: ${panelImport}`);
+}
+const panelLegacy = await readFile("src/sidepanel-legacy.js", "utf8");
+if (!panelLegacy.includes("renderTools") || !panelLegacy.includes("renderSkills") || !panelLegacy.includes("renderMemory")) throw new Error("Workbench views must be wired to real data through the loaded legacy controller.");
 
 const formUiLoader = await readFile("src/form-ui.js", "utf8");
 if (!formUiLoader.includes('import "./directory-ui.js"') || !formUiLoader.includes('import "./workspace-ui-core.js"')) {
