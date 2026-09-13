@@ -1,3 +1,4 @@
+// Shared persistence mutex only. Keep slow validation and task/provider work outside this critical section.
 let scheduleStateMutation = null;
 
 export async function withScheduleStateMutation(work) {
