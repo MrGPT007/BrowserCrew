@@ -163,6 +163,14 @@ jobs:
           name: schedule-control-evidence
           path: artifacts/schedule-control-smoke
           if-no-files-found: error
+      - name: Run post-v0.2 schedule lifecycle controls installed-extension smoke test
+        run: npm run schedule-lifecycle-smoke
+      - name: Upload schedule lifecycle controls evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-lifecycle-evidence
+          path: artifacts/schedule-lifecycle-smoke
+          if-no-files-found: error
       - name: Run v0.1 installed-extension smoke test
         run: npm run browser-smoke
       - name: Run V02-B01 W1/W3 adversarial installed-extension smoke test

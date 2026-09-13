@@ -11,6 +11,7 @@ const files = [
   "scripts/schedule-lifecycle-smoke.mjs",
   "scripts/schedule-control-worker-bootstrap.js",
   "scripts/previous-stable-runner.mjs",
+  ".github/workflows/quality.yml",
   "package.json",
   "manifest.json"
 ];
@@ -67,7 +68,15 @@ for (const phrase of [
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
 if (pkg.scripts?.["schedule-controls-check"] !== "node scripts/schedule-controls-check.mjs") throw new Error("schedule-controls-check must stay wired in package.json.");
 if (!String(pkg.scripts?.check || "").includes("schedule-controls-check.mjs")) throw new Error("npm run check must enforce schedule control contracts.");
-if (pkg.scripts?.["schedule-control-smoke"] !== "node scripts/schedule-control-smoke.mjs && node scripts/schedule-lifecycle-smoke.mjs") throw new Error("Current Chrome schedule-control smoke must include lifecycle controls.");
+if (pkg.scripts?.["schedule-control-smoke"] !== "node scripts/schedule-control-smoke.mjs") throw new Error("Existing schedule-control-smoke must stay directly runnable.");
+if (pkg.scripts?.["schedule-lifecycle-smoke"] !== "node scripts/schedule-lifecycle-smoke.mjs") throw new Error("Schedule lifecycle smoke must stay directly runnable.");
+
+const workflow = await readFile(".github/workflows/quality.yml", "utf8");
+for (const phrase of [
+  "npm run schedule-lifecycle-smoke",
+  "schedule-lifecycle-evidence",
+  "artifacts/schedule-lifecycle-smoke"
+]) if (!workflow.includes(phrase)) throw new Error(`Current Chrome schedule lifecycle evidence contract missing: ${phrase}`);
 
 const previous = await readFile("scripts/previous-stable-runner.mjs", "utf8");
 if (!previous.includes('"schedule-lifecycle-smoke.mjs"')) throw new Error("Pinned Chrome 152 matrix must include schedule lifecycle controls.");
