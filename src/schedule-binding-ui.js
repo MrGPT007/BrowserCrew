@@ -115,6 +115,7 @@ async function onBindingAction(event) {
     assertPreparedOnlyResponse(response.schedule);
     announce("Starting page reviewed. The schedule is still off and no permission grant was created.");
     await refreshBindings();
+    window.dispatchEvent(new CustomEvent("browsercrew:schedule-binding-updated", { detail: { scheduleId } }));
   } catch (error) {
     announce(error.message || "BrowserCrew could not save that starting-page review.");
   } finally {

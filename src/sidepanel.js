@@ -9,4 +9,5 @@ import "./skills-run-ui.js";
 import "./skills-draft-test-ui.js";
 import "./schedule-setup-ui.js";
 import "./schedule-binding-ui.js";
+import "./schedule-grants-ui.js";
 import "./sidepanel-legacy.js";

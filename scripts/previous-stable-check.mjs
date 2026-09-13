@@ -33,6 +33,7 @@ const targets = [
   "schedule-review-smoke.mjs",
   "schedule-setup-smoke.mjs",
   "schedule-binding-smoke.mjs",
+  "schedule-grants-smoke.mjs",
   "schedule-control-smoke.mjs"
 ];
 
@@ -40,6 +41,7 @@ for (const file of ["scripts/previous-stable-runner.mjs", "scripts/schedule-cont
 await execFileAsync(process.execPath, ["--check", "scripts/previous-stable-runner.mjs"]);
 await execFileAsync(process.execPath, ["--check", "scripts/schedule-control-smoke.mjs"]);
 await execFileAsync(process.execPath, ["--check", "scripts/schedule-binding-smoke.mjs"]);
+await execFileAsync(process.execPath, ["--check", "scripts/schedule-grants-smoke.mjs"]);
 await execFileAsync(process.execPath, ["--check", "scripts/schedule-control-worker-bootstrap.js"]);
 
 const scheduleControlBootstrap = await readFile("scripts/schedule-control-worker-bootstrap.js", "utf8");
@@ -115,8 +117,9 @@ if (pkg.scripts?.["skill-completion-check-smoke"] !== "node scripts/skill-comple
 if (pkg.scripts?.["skill-replay-resilience-smoke"] !== "node scripts/skill-replay-resilience-smoke.mjs") throw new Error("skill-replay-resilience-smoke must stay directly runnable for Chrome 152 coverage.");
 if (pkg.scripts?.["schedule-review-smoke"] !== "node scripts/schedule-review-smoke.mjs") throw new Error("schedule-review-smoke must stay directly runnable for current and Chrome 152 coverage.");
 const setupSmoke = String(pkg.scripts?.["schedule-setup-smoke"] || "");
-if (!setupSmoke.includes("node scripts/schedule-setup-smoke.mjs") || !setupSmoke.includes("node scripts/schedule-binding-smoke.mjs")) throw new Error("schedule-setup-smoke must keep prepared setup and starting-page binding coverage together on current Chrome.");
+if (!setupSmoke.includes("node scripts/schedule-setup-smoke.mjs") || !setupSmoke.includes("node scripts/schedule-binding-smoke.mjs") || !setupSmoke.includes("node scripts/schedule-grants-smoke.mjs")) throw new Error("schedule-setup-smoke must keep setup, starting-page binding, and durable grant review coverage together on current Chrome.");
 if (pkg.scripts?.["schedule-binding-smoke"] !== "node scripts/schedule-binding-smoke.mjs") throw new Error("schedule-binding-smoke must stay directly runnable for Chrome 152 coverage.");
+if (pkg.scripts?.["schedule-grants-smoke"] !== "node scripts/schedule-grants-smoke.mjs") throw new Error("schedule-grants-smoke must stay directly runnable for Chrome 152 coverage.");
 if (pkg.scripts?.["schedule-control-smoke"] !== "node scripts/schedule-control-smoke.mjs") throw new Error("schedule-control-smoke must stay directly runnable for current and Chrome 152 coverage.");
 if (!String(pkg.scripts?.check || "").includes("previous-stable-check.mjs")) throw new Error("npm run check must include previous-stable contracts.");
 

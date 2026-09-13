@@ -92,7 +92,7 @@ A schedule cannot convert a draft/unreviewed Watch Me recording into an executab
 
 ### Prepared execution binding
 
-A prepared schedule may now review an **exact starting page** without activating background scheduling. `src/schedule-prepared-metadata.js` stores only the canonical http/https URL, its origin, required resource IDs, review time, and a `prepared_only` authority plan copied from the exact approved Skill version.
+A prepared schedule may review an **exact starting page** without activating background scheduling. `src/schedule-prepared-metadata.js` stores only the canonical http/https URL, its origin, required resource IDs, review time, and a `prepared_only` authority plan copied from the exact approved Skill version.
 
 The exact reviewed start page is deliberately stricter than an allowed origin. Query parameters, URL fragments, embedded usernames/passwords, Chrome tab IDs, tokens, secrets, and executable grant fields are rejected. A future run must re-resolve a fresh browser resource to this exact reviewed URL rather than choosing an arbitrary page on the same site.
 
@@ -100,13 +100,23 @@ The authority plan is requirements data, not permission. It cannot contain `scop
 
 `src/schedule-binding-ui.js` makes this distinction visible on every prepared schedule card. Legacy prepared records remain readable but say that their starting page is not ready for future activation. The user must enter an explicit canonical URL; BrowserCrew never guesses the active tab. The dedicated `setPreparedBinding` runtime path regenerates the plan from the exact approved Skill. Ordinary schedule edits cannot inject replacement binding metadata and preserve only a previously trusted binding that still matches the exact Skill.
 
+### Durable schedule permission
+
+`src/schedule-grants-contract.js` and `src/schedule-grants-runtime.js` add an explicit, revocable authority lifecycle without activating scheduling. Permission is never created by saving a schedule or reviewing its starting page. The user must separately choose **Approve future permission** after the exact Skill, named AI connection, starting page, and prepared scope have been reviewed.
+
+A schedule grant is pinned to one exact schedule ID, one exact Skill id/version, and one exact provider reference. It copies only the reviewed origin/resource/action/provider-capability/data-destination scope, has an explicit expiration, and rejects secrets, runtime inputs, headers, cookies, provider credentials, and Chrome tab IDs. One schedule cannot reuse another schedule's authority.
+
+While an active grant is referenced, ordinary edits cannot silently move that authority to a different Skill version or AI connection, and starting-page changes are blocked. The user must revoke the current permission first, review the changed schedule, and explicitly approve a replacement. Revocation removes the executable reference from the schedule but preserves the revoked grant receipt for audit. Deleting a prepared schedule revokes any remaining active grant before the schedule record is removed.
+
+This permission remains pre-activation data: approving or revoking it creates no alarm and no schedule-run receipt, and the schedule stays disabled. Future activation must still revalidate expiry/revocation, exact provider identity, exact Skill version, scope, and the freshly re-resolved resource immediately before dispatch.
+
 ### Fail-closed schedule dispatcher
 
 `src/schedule-dispatcher.js` is the pre-activation bridge from a validated schedule to the exact approved Skill executor. It is intentionally not imported or booted by the production service worker while v0.2 remains active.
 
 The dispatcher does not guess the active tab. A future activation layer must resolve the saved starting resource explicitly and return a fresh tab/resource binding inside the Skill's approved origin/resource scope. If BrowserCrew cannot re-find that exact reviewed start page, dispatch is blocked.
 
-A scheduled run requires an **active schedule grant** that is referenced by the exact schedule ID and pinned to the exact Skill id/version. One schedule cannot reuse another schedule's authority merely because the Skill requirements look the same. Skill requirements and the prepared authority plan never manufacture authority. The active schedule grant must still cover every required origin, action class, resource, provider capability, and data destination, and it must still be unexpired and unrevoked.
+A scheduled run requires an **active schedule grant** that is referenced by the exact schedule ID and pinned to the exact AI connection and Skill id/version. One schedule cannot reuse another schedule's authority merely because the Skill requirements look the same. Skill requirements and the prepared authority plan never manufacture authority. The active schedule grant must still cover every required origin, action class, resource, provider capability, and data destination, and it must still be unexpired and unrevoked.
 
 Provider selection is also revalidated. The named provider must still match the schedule, be available, and expose every capability required by the exact Skill version. Runtime secrets are not stored in the schedule dispatcher.
 
@@ -120,21 +130,21 @@ The dispatcher performs an initial readiness pass and then re-resolves provider,
 - `src/skills-runtime.js` / `src/skills-runner.js` — immutable exact-version execution, durable Skill receipts, runtime grants, semantic target re-resolution, completion verification, and no-blind-write-retry recovery.
 - `src/watch-me-contract.js` / `src/watch-me-runtime.js` — scoped semantic demonstration recording, secret-safe input parameterization, completion evidence, restart recovery, and draft-Skill creation.
 - `src/schedules-contract.js` — version-pinned schedule validation, dispatch guards, concurrency/missed-run rules, alarm naming/reconciliation, and timezone-aware next-run calculation.
-- `src/schedules-runtime.js` — durable schedule storage/receipts, restart reconciliation, missed-run review, bounded queue-one behavior, alarm lifecycle contract, exact run linkage, and prepared starting-page review. Production boot is intentionally disabled.
+- `src/schedules-runtime.js` — durable schedule storage/receipts, restart reconciliation, missed-run review, bounded queue-one behavior, alarm lifecycle contract, exact run linkage, prepared starting-page review, protected edits under durable authority, and revoke-before-delete. Production boot is intentionally disabled.
 - `src/schedule-setup-ui.js` — prepare/edit/delete UX with exact Skill/provider/scope/budget/history details while activation controls remain locked.
 - `src/schedule-prepared-metadata.js` / `src/schedule-binding-ui.js` — canonical starting-page review plus an inert, exact-Skill authority plan with no tab ID and no grant.
+- `src/schedule-grants-contract.js` / `src/schedule-grants-runtime.js` / `src/schedule-grants-ui.js` — explicit expiring schedule permission approval/revocation pinned to exact schedule, provider, Skill and scope while schedules remain disabled.
 - `src/schedule-dispatcher.js` — fail-closed readiness/execution bridge for exact approved Skills. It is not wired into production boot yet.
-- installed-extension coverage proves Watch Me, Skill lifecycle/version/Test/Run, missed-run review, prepared schedules and starting-page binding, scheduler restart behavior, and scheduled normal-task Stop/Pause on current Chrome and pinned Chrome 152.
+- installed-extension coverage proves Watch Me, Skill lifecycle/version/Test/Run, missed-run review, prepared schedules, starting-page binding, durable grant replacement/revocation, scheduler restart behavior, and scheduled normal-task Stop/Pause on current Chrome and pinned Chrome 152.
 
 ## Remaining activation boundary
 
 Before a post-v0.2 scheduling release can turn this on, BrowserCrew still needs the intentionally deferred activation slice:
 
-1. create, review, persist, revoke, and replace a durable active schedule grant tied to one exact schedule and Skill version;
-2. implement production resolvers for the named provider, exact active grant, and saved starting-resource binding;
-3. wire `createScheduleSkillDispatcher(...)` into scheduler boot;
-4. add `alarms` to the post-v0.2 manifest and update Web Store permission disclosures;
-5. enable Run now / Pause schedule controls against the live scheduler; and
-6. run the complete current + previous-stable release matrix again on the activation candidate.
+1. implement production resolvers for the named provider, exact active grant, and saved starting-resource binding;
+2. wire `createScheduleSkillDispatcher(...)` into scheduler boot;
+3. add `alarms` to the post-v0.2 manifest and update Web Store permission disclosures;
+4. enable Run now / Pause schedule controls against the live scheduler; and
+5. run the complete current + previous-stable release matrix again on the activation candidate.
 
 None of those activation steps should be backported into the v0.2 Web Store candidate.

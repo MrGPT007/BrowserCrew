@@ -42,6 +42,7 @@ const targets = [
   "schedule-review-smoke.mjs",
   "schedule-setup-smoke.mjs",
   "schedule-binding-smoke.mjs",
+  "schedule-grants-smoke.mjs",
   "schedule-control-smoke.mjs"
 ];
 const report = {

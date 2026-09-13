@@ -166,8 +166,8 @@ function assertScheduledGrant(schedule, skill, grant, blockers) {
     blockers.push(block("SCHEDULE_GRANT_REQUIRED", "This prepared schedule has no active schedule permission grant."));
     return;
   }
-  if (grant.scope !== "schedule" || grant.status !== "active" || grant.scheduleId !== schedule?.id || grant.skillRef?.id !== skill?.id || grant.skillRef?.version !== skill?.version) {
-    blockers.push(block("SCHEDULE_GRANT_SCOPE_MISMATCH", "The saved permission grant must be active and pinned to this exact schedule and Skill version."));
+  if (grant.scope !== "schedule" || grant.status !== "active" || grant.scheduleId !== schedule?.id || grant.providerRef !== schedule?.providerRef || grant.skillRef?.id !== skill?.id || grant.skillRef?.version !== skill?.version) {
+    blockers.push(block("SCHEDULE_GRANT_SCOPE_MISMATCH", "The saved permission grant must be active and pinned to this exact schedule, AI connection, and Skill version."));
     return;
   }
   if (!grant.id || !(schedule?.grantRefs || []).includes(grant.id)) {

@@ -10,6 +10,11 @@ import {
 } from "./schedules-contract.js";
 import { getSkillVersion } from "./skills-runtime.js";
 import { assertPreparedScheduleMetadataForSkill, createPreparedScheduleMetadata } from "./schedule-prepared-metadata.js";
+import {
+  assertScheduleEditAllowedWithGrant,
+  resolveActiveScheduleGrant,
+  revokeScheduleGrantsForDeletedSchedule
+} from "./schedule-grants-runtime.js";
 
 const SCHEDULES_KEY = "browsercrew.schedules.v1";
 const SCHEDULE_RUNS_KEY = "browsercrew.scheduleRuns.v1";
@@ -82,11 +87,15 @@ export async function saveSchedule(input) {
   const schedules = await listSchedules();
   const index = schedules.findIndex((item) => item.id === schedule.id);
   if (index < 0 && schedules.length >= MAX_SCHEDULES) throw coded("SCHEDULE_LIMIT", `BrowserCrew can keep up to ${MAX_SCHEDULES} schedules in this build.`);
-  // saveDraft can neither add nor replace authority references. A future dedicated
+  if (index >= 0) await assertScheduleEditAllowedWithGrant(schedules[index], schedule);
+  // saveDraft can neither add nor replace authority references. The dedicated
   // grant lifecycle owns these refs; ordinary edits preserve only trusted stored refs.
   schedule.grantRefs = index >= 0 && Array.isArray(schedules[index].grantRefs) ? structuredClone(schedules[index].grantRefs) : [];
   if (index >= 0) preservePreparedMetadata(schedule, schedules[index], skillResult.skill);
-  if (schedule.enabled) assertPreparedScheduleMetadataForSkill(schedule, skillResult.skill);
+  if (schedule.enabled) {
+    assertPreparedScheduleMetadataForSkill(schedule, skillResult.skill);
+    await resolveActiveScheduleGrant(schedule.grantRefs, { schedule, skill: skillResult.skill });
+  }
   const now = new Date().toISOString();
   schedule.createdAt = index >= 0 ? schedules[index].createdAt : schedule.createdAt || now;
   schedule.updatedAt = now;
@@ -106,7 +115,7 @@ export async function setPreparedScheduleBinding(scheduleId, pageUrl) {
   const existing = schedules[index];
   if (existing.enabled) throw coded("SCHEDULE_BINDING_PREPARED_ONLY", "Pause this schedule before changing its reviewed starting page.");
   if (Array.isArray(existing.grantRefs) && existing.grantRefs.length) {
-    throw coded("SCHEDULE_BINDING_ACTIVE_GRANT_PRESENT", "This schedule already references durable authority. Revoke or replace that grant through the future activation review flow before changing its starting page.");
+    throw coded("SCHEDULE_BINDING_ACTIVE_GRANT_PRESENT", "This schedule already references durable authority. Revoke that permission before changing its starting page.");
   }
 
   const skillResult = await getSkillVersion(existing.skillRef.id, existing.skillRef.version);
@@ -136,6 +145,7 @@ export async function setScheduleEnabled(scheduleId, enabled) {
     const skillResult = await getSkillVersion(exact.skillRef.id, exact.skillRef.version);
     if (!skillResult.ok) throw coded("SCHEDULE_SKILL_NOT_FOUND", "The exact approved Skill version for this schedule is no longer available.");
     assertPreparedScheduleMetadataForSkill(exact, skillResult.skill);
+    await resolveActiveScheduleGrant(exact.grantRefs, { schedule: exact, skill: skillResult.skill });
   }
   const schedule = { ...schedules[index], enabled: desired, updatedAt: new Date().toISOString() };
   schedule.nextRunAt = schedule.enabled ? new Date(nextRun(schedule)).toISOString() : null;
@@ -149,6 +159,7 @@ export async function deleteSchedule(scheduleId) {
   const schedules = await listSchedules();
   const next = schedules.filter((item) => item.id !== scheduleId);
   if (next.length === schedules.length) throw coded("SCHEDULE_NOT_FOUND", "That schedule could not be found.");
+  await revokeScheduleGrantsForDeletedSchedule(scheduleId);
   await persistSchedules(next);
   if (chrome.alarms?.clear) await chrome.alarms.clear(alarmName(scheduleId));
   return { ok: true };
