@@ -1,6 +1,7 @@
 import "./skills-automation-ui.js";
 import "./watch-me-resilience-ui.js";
 import "./skills-draft-review-ui.js";
+import "./skills-completion-checks-ui.js";
 import "./skills-library-lifecycle-ui.js";
 import "./skills-portable-ui.js";
 import "./skills-run-ui.js";
