@@ -14,7 +14,7 @@ const icons = [
   { id: "icon_16_png", source: "src/assets/icons/browsercrew-16.png", width: 16, height: 16, sha256: "4091914f5ca6693ae6522e46872e5187642513d4cb8e6afa520143d797e75d2f" },
   { id: "icon_32_png", source: "src/assets/icons/browsercrew-32.png", width: 32, height: 32, sha256: "5352f3c4ab52f982a5f71e8effaa229f90ec7605262cdd7bd668b31a5fba623f" },
   { id: "icon_48_png", source: "src/assets/icons/browsercrew-48.png", width: 48, height: 48, sha256: "e94df3809d38db20bec7e5cd9c54c247b1fab359ba01bf419f10a2556112a07a" },
-  { id: "icon_128_png", source: "src/assets/icons/browsercrew-128.png", width: 128, height: 128, sha256: "8bcec8327cb641996bddf9a0f5817c7e5014c3dd272ab74a25d40491d9023eb7" }
+  { id: "icon_128_png", source: "src/assets/icons/browsercrew-128.png", width: 128, height: 128, sha256: "7d707768a259207a1a5963c8cf351f297ccef482153f50d14fd05abf0682ce09" }
 ];
 
 const report = JSON.parse(await readFile(reportPath, "utf8"));
@@ -41,6 +41,57 @@ await copyFile(join(repoRoot, "src/assets/icons/browsercrew-128.png"), join(arti
 const browser = await chromium.launch({ channel: "chromium", headless: true });
 let context;
 try {
+  context = await browser.newContext();
+  const iconPage = await context.newPage();
+  const iconBytes = await readFile(join(repoRoot, "src/assets/icons/browsercrew-128.png"));
+  const alphaBounds = await iconPage.evaluate(async (src) => {
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+      image.src = src;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(image, 0, 0);
+    const pixels = ctx.getImageData(0, 0, image.width, image.height).data;
+    let left = image.width;
+    let top = image.height;
+    let right = -1;
+    let bottom = -1;
+    for (let y = 0; y < image.height; y += 1) {
+      for (let x = 0; x < image.width; x += 1) {
+        const alpha = pixels[(y * image.width + x) * 4 + 3];
+        if (alpha === 0) continue;
+        left = Math.min(left, x);
+        top = Math.min(top, y);
+        right = Math.max(right, x);
+        bottom = Math.max(bottom, y);
+      }
+    }
+    return {
+      left,
+      top,
+      rightExclusive: right + 1,
+      bottomExclusive: bottom + 1,
+      width: right - left + 1,
+      height: bottom - top + 1
+    };
+  }, `data:image/png;base64,${iconBytes.toString("base64")}`);
+  assert.deepEqual(
+    alphaBounds,
+    { left: 16, top: 16, rightExclusive: 112, bottomExclusive: 112, width: 96, height: 96 },
+    "Chrome Web Store 128x128 icon must keep 96x96 visible artwork centered with 16px transparent padding on every side."
+  );
+  report.checks.push({
+    name: "Verified Chrome Web Store 128x128 icon transparent padding",
+    details: { ...alphaBounds, paddingPx: 16 },
+    at: new Date().toISOString()
+  });
+  await context.close();
+
   context = await browser.newContext({ viewport: { width: 440, height: 280 } });
   const page = await context.newPage();
   await page.setContent(`<!doctype html>
