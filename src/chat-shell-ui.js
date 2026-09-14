@@ -1,4 +1,7 @@
 const SHELL_STYLESHEET = "src/styles/chat-shell.css";
+const CONNECTIONS_KEY = "browsercrew.connections.v1";
+const ACTIVE_CONNECTION_KEY = "browsercrew.activeConnection.v1";
+let aiSetupPreviousFocus = null;
 
 installShellStyles();
 document.addEventListener("DOMContentLoaded", initChatFirstShell);
@@ -21,17 +24,18 @@ async function initChatFirstShell() {
   app.classList.add("chat-first-shell");
   document.body.classList.add("browsercrew-chat-first");
 
-  // The primary reading order is now: brand/menu -> connection status -> Chat.
+  // Primary reading order: product menu -> AI status -> conversation.
   if (nav.nextElementSibling !== statusStrip) nav.after(statusStrip);
 
   setupAiStatusTrigger();
   setupAiModal();
   compactChatSurface();
   keepShellStateInSync();
+  watchConnectionState();
 
   await refreshConfiguredAiStatus();
 
-  // Chat is the product surface. Other views are explicitly opened by the user.
+  // Chat is the product surface. Everything else is opened on demand.
   requestAnimationFrame(() => document.querySelector("#tab-chat")?.click());
 }
 
@@ -93,14 +97,13 @@ function setupAiModal() {
 
   moveAiHelpBehindDisclosure(view);
 
-  // Connect AI remains in the menu for discoverability, but opens a focused overlay.
+  // Connect AI remains discoverable in the menu but never replaces Chat.
   aiTab.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
     openAiSetupModal();
   }, true);
 
-  // Choosing another top-level destination closes the overlay first.
   nav.addEventListener("click", (event) => {
     const tab = event.target.closest?.(".function-tab");
     if (!tab || tab.id === "tab-ai") return;
@@ -112,10 +115,14 @@ function setupAiModal() {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !backdrop.hidden) {
+    if (backdrop.hidden) return;
+    if (event.key === "Escape") {
       event.preventDefault();
+      event.stopImmediatePropagation();
       closeAiSetupModal();
+      return;
     }
+    if (event.key === "Tab") trapModalFocus(event, view);
   }, true);
 
   const result = document.querySelector("#connectionResult");
@@ -123,9 +130,9 @@ function setupAiModal() {
     const observer = new MutationObserver(() => {
       if (result.hidden) return;
       if (result.classList.contains("success")) {
-        enrichAiStatus("Connected");
+        enrichAiStatus("Connected", "ok");
       } else if (result.classList.contains("error")) {
-        enrichAiStatus("Connection failed");
+        enrichAiStatus("Connection failed", "error");
       }
     });
     observer.observe(result, { attributes: true, childList: true, subtree: true, characterData: true });
@@ -190,64 +197,137 @@ function keepShellStateInSync() {
   new MutationObserver(update).observe(chatView, { attributes: true, attributeFilter: ["hidden", "class"] });
 }
 
+function watchConnectionState() {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local") return;
+    if (changes[CONNECTIONS_KEY] || changes[ACTIVE_CONNECTION_KEY]) refreshConfiguredAiStatus().catch(() => {});
+  });
+}
+
 function openAiSetupModal() {
   const backdrop = document.querySelector("#aiSetupBackdrop");
   const view = document.querySelector("#view-ai");
-  if (!backdrop || !view) return;
+  if (!backdrop || !view || !backdrop.hidden) return;
+  aiSetupPreviousFocus = document.activeElement;
   backdrop.hidden = false;
   backdrop.setAttribute("aria-hidden", "false");
   view.hidden = false;
   view.classList.add("is-active");
+  setBackgroundInert(true, backdrop);
   document.body.classList.add("shell-modal-open");
   refreshConfiguredAiStatus();
-  requestAnimationFrame(() => {
-    const preferred = view.querySelector("#apiKeyInput:not([hidden]), #modelInput, .provider-card, button, input");
-    preferred?.focus();
-  });
+  requestAnimationFrame(() => focusFirstVisible(view));
 }
 
 function closeAiSetupModal({ restoreFocus = true } = {}) {
   const backdrop = document.querySelector("#aiSetupBackdrop");
   const view = document.querySelector("#view-ai");
-  if (!backdrop || !view) return;
+  if (!backdrop || !view || backdrop.hidden) return;
   backdrop.hidden = true;
   backdrop.setAttribute("aria-hidden", "true");
   view.hidden = true;
   view.classList.remove("is-active");
+  setBackgroundInert(false, backdrop);
   document.body.classList.remove("shell-modal-open");
   refreshConfiguredAiStatus();
-  if (restoreFocus) document.querySelector("#aiStatus")?.focus();
+  if (restoreFocus) {
+    const target = aiSetupPreviousFocus?.isConnected ? aiSetupPreviousFocus : document.querySelector("#aiStatus");
+    target?.focus();
+  }
+  aiSetupPreviousFocus = null;
 }
 
 async function refreshConfiguredAiStatus() {
-  const response = await chrome.runtime.sendMessage({ type: "GET_SETTINGS" }).catch(() => null);
+  const [response, stored] = await Promise.all([
+    chrome.runtime.sendMessage({ type: "GET_SETTINGS" }).catch(() => null),
+    chrome.storage.local.get([CONNECTIONS_KEY, ACTIVE_CONNECTION_KEY]).catch(() => ({}))
+  ]);
   if (!response?.ok) return;
   const status = document.querySelector("#aiStatus");
   const label = status?.querySelector(".status-label");
   if (!status || !label) return;
 
-  const model = String(response.settings?.model || "").trim();
-  const kind = String(response.settings?.kind || "openai");
+  const connections = Array.isArray(stored[CONNECTIONS_KEY]) ? stored[CONNECTIONS_KEY] : [];
+  const activeId = stored[ACTIVE_CONNECTION_KEY] || null;
+  const active = connections.find((item) => item.id === activeId) || null;
+  const model = String(active?.model || response.settings?.model || "").trim();
+  const kind = String(active?.kind || response.settings?.kind || "openai");
   const needsSecret = kind === "openai" || kind === "anthropic";
   const hasCredentials = !needsSecret || Boolean(response.hasSecret);
 
+  if (active?.status === "connected") {
+    setAiStatusPresentation("ok", model ? `Connected · ${model}` : "Connected", model);
+    return;
+  }
+  if (active?.status === "failed") {
+    setAiStatusPresentation("error", model ? `Connection failed · ${model}` : "Connection failed", model);
+    return;
+  }
+  if (active?.status === "permission_needed") {
+    setAiStatusPresentation("warn", model ? `Permission needed · ${model}` : "Permission needed", model);
+    return;
+  }
+
+  // The legacy one-connection tester still updates the visible state directly.
   if (status.dataset.state === "ok") {
-    label.textContent = model ? `Connected · ${model}` : "Connected";
+    setAiStatusPresentation("ok", model ? `Connected · ${model}` : "Connected", model);
     return;
   }
   if (!hasCredentials) {
-    status.dataset.state = "warn";
-    label.textContent = model ? `Not connected · ${model}` : "Not connected";
+    setAiStatusPresentation("warn", model ? `Not connected · ${model}` : "Not connected", model);
     return;
   }
-  label.textContent = model ? `Configured · ${model}` : "Configured";
+  setAiStatusPresentation("idle", model ? `Ready to test · ${model}` : "Ready to test", model);
 }
 
-function enrichAiStatus(stateText) {
+function enrichAiStatus(stateText, stateName) {
+  const model = document.querySelector("#modelInput")?.value.trim() || "";
+  setAiStatusPresentation(stateName, model ? `${stateText} · ${model}` : stateText, model);
+}
+
+function setAiStatusPresentation(stateName, text, model = "") {
   const status = document.querySelector("#aiStatus");
   const label = status?.querySelector(".status-label");
-  const model = document.querySelector("#modelInput")?.value.trim();
   if (!status || !label) return;
-  label.textContent = model ? `${stateText} · ${model}` : stateText;
-  status.setAttribute("aria-label", `AI ${stateText.toLowerCase()}${model ? ` using ${model}` : ""}. Open AI setup.`);
+  status.dataset.state = stateName;
+  label.textContent = text;
+  const spoken = stateName === "ok" ? "connected" : stateName === "error" ? "connection failed" : text.toLowerCase();
+  status.setAttribute("aria-label", `AI ${spoken}${model && !spoken.includes(model.toLowerCase()) ? ` using ${model}` : ""}. Open AI setup.`);
+}
+
+function focusFirstVisible(root) {
+  const nodes = focusableNodes(root);
+  (nodes[0] || root)?.focus?.();
+}
+
+function trapModalFocus(event, root) {
+  const nodes = focusableNodes(root);
+  if (!nodes.length) {
+    event.preventDefault();
+    root.focus?.();
+    return;
+  }
+  const first = nodes[0];
+  const last = nodes.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function focusableNodes(root) {
+  return [...root.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])')]
+    .filter((node) => !node.hidden && !node.closest("[hidden]") && getComputedStyle(node).display !== "none" && getComputedStyle(node).visibility !== "hidden");
+}
+
+function setBackgroundInert(inert, backdrop) {
+  const app = document.querySelector("#app");
+  if (!app) return;
+  for (const child of app.children) {
+    if (child === backdrop) continue;
+    child.inert = inert;
+  }
 }
