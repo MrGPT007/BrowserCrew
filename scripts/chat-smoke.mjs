@@ -59,13 +59,14 @@ try {
   assert.equal(await panel.locator("#view-ai").getAttribute("role"), "dialog");
   assert.equal(await panel.locator(".ai-help-disclosure").getAttribute("open"), null, "Verbose AI setup help must start collapsed.");
   await panel.getByRole("radio", { name: /LM Studio/ }).click();
+  await panel.locator("#connectionNameInput").fill("Local smoke AI");
   await panel.locator("#modelInput").fill("browsercrew-chat-smoke");
   await panel.locator("#serverInput").fill(`${provider.origin}/v1`);
-  await panel.locator("#testConnectionButton").click();
+  await panel.locator("#saveConnectionButton").click();
   await waitForText(panel.locator("#connectionResult"), "Connected");
   await waitForText(panel.locator("#aiStatus .status-label"), "Connected");
   assert.match(await panel.locator("#aiStatus .status-label").innerText(), /browsercrew-chat-smoke/i);
-  pass("AI setup opened progressively from the status chip and reflected a successful connection in the persistent status bar");
+  pass("AI setup opened progressively from the status chip and persisted a tested named connection in the status bar");
 
   await panel.locator("#aiSetupCloseButton").click();
   await panel.locator("#aiSetupBackdrop").waitFor({ state: "hidden", timeout: timeoutMs });
@@ -109,10 +110,11 @@ try {
   await panel.locator("#chatInput").waitFor({ state: "visible", timeout: timeoutMs });
   await waitForText(panel.locator("#chatMessages"), "Visible Chat Lamp costs $88.");
   await waitForText(panel.locator("#aiStatus .status-label"), "Connected");
+  assert.match(await panel.locator("#aiStatus .status-label").innerText(), /browsercrew-chat-smoke/i, "Tested named connection should remain identified after reopen.");
   await panel.locator("#chatActivityToggle").click();
   await waitForText(panel.locator("#chatActivityList"), "Current-page context is ready");
   assert.match(await panel.locator("#chatActivityList").innerText(), /Saved|Response complete|Model finished/i);
-  pass("Chat, connection status, transcript, and progressive Live Activity survived side-panel close and reopen");
+  pass("Chat, tested AI status, transcript, and progressive Live Activity survived side-panel close and reopen");
 
   await panel.locator("#chatUseCurrentPage").uncheck();
   await panel.locator("#chatInput").fill("Please give a slow response.");
