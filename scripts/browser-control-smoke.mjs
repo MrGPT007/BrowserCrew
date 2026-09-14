@@ -11,6 +11,7 @@ const artifactDir = join(repoRoot, "artifacts", "browser-control-smoke");
 const timeoutMs = 40_000;
 const VISIBLE_CANARY = "CONTROL_VISIBLE_CANARY_79b1";
 const SECRET_CANARY = "CONTROL_SECRET_CANARY_4e2d";
+const PENDING_APPROVAL_KEY = "browsercrew.browserControlPendingApproval.v1";
 
 await rm(artifactDir, { recursive: true, force: true });
 await mkdir(artifactDir, { recursive: true });
@@ -72,6 +73,7 @@ try {
   const firstTool = controlRequests[0].body.tools?.find((tool) => tool.function?.name === "browsercrew_browser_control")?.function;
   assert.ok(firstTool, "Browser control must be offered as an explicit model tool only while the session grant is ON.");
   assert.ok(firstTool.parameters?.properties?.action?.enum?.includes("open_tab"));
+  assert.equal(Object.prototype.hasOwnProperty.call(firstTool.parameters?.properties || {}, "approvedConsequential"), false, "The model must never receive an approval-bypass argument.");
   const observedToolText = controlRequests.filter((item) => item.toolText).map((item) => item.toolText).join("\n");
   assert.ok(observedToolText.includes(VISIBLE_CANARY), "The model should receive bounded visible page context from observe.");
   assert.equal(observedToolText.includes(SECRET_CANARY), false, "Browser observation must not expose password-field secrets to the model.");
@@ -90,10 +92,45 @@ try {
   await panel.locator("#chatInput").fill("Dangerous action test: inspect the page and click Delete account.");
   await panel.locator("#chatSendButton").click();
   await waitForText(panel.locator("#chatMessages"), "Paused for confirmation");
+  await panel.locator("#browserControlApproval").waitFor({ state: "visible", timeout: timeoutMs });
+  await waitForText(panel.locator("#browserControlApprovalAction"), "Delete account");
+  await waitForText(panel.locator("#browserControlApprovalSite"), new URL(fixtureServer.origin).hostname);
+  assert.equal(await panel.evaluate(() => document.activeElement?.id || ""), "browserControlApprovalCancel", "Consequential approval should focus Cancel by default.");
   const afterDanger = await target.evaluate(() => window.__browserCrewDangerClicks || 0);
   assert.equal(afterDanger, 0, "Consequential click must not execute without a separate confirmation path.");
   assert.ok(providerServer.requests.some((item) => item.toolText.includes("CONFIRMATION_REQUIRED")), "The model should receive an explicit confirmation-required result.");
-  pass("Browser control paused before a consequential click instead of treating session authority as irreversible-action approval");
+  const pendingApproval = await panel.evaluate(async (key) => (await chrome.storage.session.get(key))[key] || null, PENDING_APPROVAL_KEY);
+  assert.ok(pendingApproval?.id, "A consequential click should create one pending session approval.");
+  assert.equal(pendingApproval.tabId, targetTabId);
+  assert.equal(pendingApproval.url, `${fixtureServer.origin}/control.html`);
+  assert.equal(pendingApproval.label, "Delete account");
+  assert.equal(JSON.stringify(pendingApproval).includes(VISIBLE_CANARY), false);
+  assert.equal(JSON.stringify(pendingApproval).includes(SECRET_CANARY), false);
+  pass("Browser control paused before a consequential click and created only a narrow session approval");
+
+  await panel.locator("#browserControlApprovalApprove").click();
+  await panel.locator("#browserControlApproval").waitFor({ state: "hidden", timeout: timeoutMs });
+  await target.waitForFunction(() => window.__browserCrewDangerClicks === 1, null, { timeout: timeoutMs });
+  const afterApproval = await target.evaluate(() => window.__browserCrewDangerClicks || 0);
+  assert.equal(afterApproval, 1, "Approve once should execute the exact consequential click exactly once.");
+  const pendingAfterApproval = await panel.evaluate(async (key) => (await chrome.storage.session.get(key))[key] || null, PENDING_APPROVAL_KEY);
+  assert.equal(pendingAfterApproval, null, "The one-time approval must be consumed before the click executes.");
+  const replay = await panel.evaluate(async (approvalId) => chrome.runtime.sendMessage({ type: "APPROVE_BROWSER_CONTROL_ACTION", approvalId }), pendingApproval.id);
+  assert.equal(replay?.ok, false, "A consumed approval id must not be reusable.");
+  assert.equal(await target.evaluate(() => window.__browserCrewDangerClicks || 0), 1, "Replaying a consumed approval must not click again.");
+  pass("Approve once executed the exact click once and rejected replay of the consumed approval");
+
+  await panel.locator("#chatNewButton").click();
+  await target.bringToFront();
+  await panel.bringToFront();
+  await panel.locator("#chatInput").fill("Dangerous action test: inspect the page and click Delete account.");
+  await panel.locator("#chatSendButton").click();
+  await panel.locator("#browserControlApproval").waitFor({ state: "visible", timeout: timeoutMs });
+  await panel.locator("#browserControlApprovalCancel").click();
+  await panel.locator("#browserControlApproval").waitFor({ state: "hidden", timeout: timeoutMs });
+  assert.equal(await target.evaluate(() => window.__browserCrewDangerClicks || 0), 1, "Cancel must leave the consequential action untouched.");
+  assert.equal(await panel.evaluate(async (key) => (await chrome.storage.session.get(key))[key] || null, PENDING_APPROVAL_KEY), null);
+  pass("Cancel discarded the pending consequential action without executing it");
 
   await panel.locator("#chatNewButton").click();
   await panel.locator("#chatInput").fill("Revocation test: wait, then inspect the test page.");
