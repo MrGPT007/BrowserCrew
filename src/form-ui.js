@@ -2,6 +2,7 @@ import "./chat-ui.js";
 import "./chat-attachments-ui.js";
 import "./chat-tools-ui.js";
 import "./browser-control-ui.js";
+import "./browser-control-approval-resume-ui.js";
 import "./mcp-ui.js";
 import "./chat-provider-status.js";
 import "./anthropic-ui.js";

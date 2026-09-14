@@ -12,6 +12,7 @@ const timeoutMs = 40_000;
 const VISIBLE_CANARY = "CONTROL_VISIBLE_CANARY_79b1";
 const SECRET_CANARY = "CONTROL_SECRET_CANARY_4e2d";
 const PENDING_APPROVAL_KEY = "browsercrew.browserControlPendingApproval.v1";
+const CHAT_STORAGE_KEY = "browsercrew.conversations.v1";
 
 await rm(artifactDir, { recursive: true, force: true });
 await mkdir(artifactDir, { recursive: true });
@@ -89,7 +90,7 @@ try {
   await panel.locator("#chatNewButton").click();
   await target.bringToFront();
   await panel.bringToFront();
-  await panel.locator("#chatInput").fill("Dangerous action test: inspect the page and click Delete account.");
+  await panel.locator("#chatInput").fill("Dangerous action test: inspect the page and click Delete account, then verify what happened.");
   await panel.locator("#chatSendButton").click();
   await waitForText(panel.locator("#chatMessages"), "Paused for confirmation");
   await panel.locator("#browserControlApproval").waitFor({ state: "visible", timeout: timeoutMs });
@@ -106,20 +107,43 @@ try {
   assert.equal(pendingApproval.label, "Delete account");
   assert.equal(JSON.stringify(pendingApproval).includes(VISIBLE_CANARY), false);
   assert.equal(JSON.stringify(pendingApproval).includes(SECRET_CANARY), false);
+  const dangerConversationId = await panel.locator("#chatConversationSelect").inputValue();
+  assert.ok(dangerConversationId, "The pending approval must originate from a concrete saved Chat.");
   pass("Browser control paused before a consequential click and created only a narrow session approval");
 
   await panel.locator("#browserControlApprovalApprove").click();
   await panel.locator("#browserControlApproval").waitFor({ state: "hidden", timeout: timeoutMs });
   await target.waitForFunction(() => window.__browserCrewDangerClicks === 1, null, { timeout: timeoutMs });
-  const afterApproval = await target.evaluate(() => window.__browserCrewDangerClicks || 0);
-  assert.equal(afterApproval, 1, "Approve once should execute the exact consequential click exactly once.");
+  await waitForText(panel.locator("#chatMessages"), "Approved action verified");
+  const afterApproval = await target.evaluate(() => ({
+    dangerClicks: window.__browserCrewDangerClicks || 0,
+    dangerResult: document.querySelector("#dangerResult")?.textContent || ""
+  }));
+  assert.equal(afterApproval.dangerClicks, 1, "Approve once should execute the exact consequential click exactly once.");
+  assert.equal(afterApproval.dangerResult, "Account deletion request accepted.");
   const pendingAfterApproval = await panel.evaluate(async (key) => (await chrome.storage.session.get(key))[key] || null, PENDING_APPROVAL_KEY);
   assert.equal(pendingAfterApproval, null, "The one-time approval must be consumed before the click executes.");
   const replay = await panel.evaluate(async (approvalId) => chrome.runtime.sendMessage({ type: "APPROVE_BROWSER_CONTROL_ACTION", approvalId }), pendingApproval.id);
   assert.equal(replay?.ok, false, "A consumed approval id must not be reusable.");
   assert.equal(await target.evaluate(() => window.__browserCrewDangerClicks || 0), 1, "Replaying a consumed approval must not click again.");
-  pass("Approve once executed the exact click once and rejected replay of the consumed approval");
 
+  const resumeRequests = providerServer.requests.filter((item) => /Dangerous action test/i.test(item.userText) && /internal continuation after a user-approved browser action/i.test(item.systemText));
+  assert.ok(resumeRequests.length >= 2, "Approving once should start a fresh tool-enabled model turn for the same task.");
+  assert.ok(resumeRequests.every((item) => /do not repeat it/i.test(item.systemText)), "Every resumed model turn must be told not to repeat the approved action.");
+  assert.ok(resumeRequests.some((item) => item.toolText.includes("Account deletion request accepted.")), "The resumed agent must re-observe the changed page before declaring success.");
+  assert.equal(resumeRequests.some((item) => item.toolText.includes("CONFIRMATION_REQUIRED")), false, "The resumed agent must not request the approved dangerous click again.");
+
+  const chatsAfterResume = await panel.evaluate(async (key) => (await chrome.storage.local.get(key))[key] || [], CHAT_STORAGE_KEY);
+  const dangerConversation = chatsAfterResume.find((item) => item.id === dangerConversationId);
+  assert.ok(dangerConversation, "The originating Chat must remain available after automatic continuation.");
+  const dangerUserMessages = (dangerConversation.messages || []).filter((item) => item.role === "user");
+  assert.equal(dangerUserMessages.length, 1, "Automatic approval continuation must not fabricate a second user message.");
+  assert.match(dangerUserMessages[0].text, /Dangerous action test/i);
+  assert.equal(dangerUserMessages.some((item) => /continue after|approved action/i.test(item.text) && !/Dangerous action test/i.test(item.text)), false, "No hidden continuation text may appear as a durable user message.");
+  assert.ok((dangerConversation.activity || []).some((item) => item.type === "browser_approval_resume"), "The automatic continuation must be visible in Chat activity.");
+  pass("Approve once executed exactly once, resumed the originating Chat, re-observed the result, and finished without a synthetic user message");
+
+  const resumesBeforeCancel = providerServer.requests.filter((item) => /internal continuation after a user-approved browser action/i.test(item.systemText)).length;
   await panel.locator("#chatNewButton").click();
   await target.bringToFront();
   await panel.bringToFront();
@@ -128,9 +152,12 @@ try {
   await panel.locator("#browserControlApproval").waitFor({ state: "visible", timeout: timeoutMs });
   await panel.locator("#browserControlApprovalCancel").click();
   await panel.locator("#browserControlApproval").waitFor({ state: "hidden", timeout: timeoutMs });
+  await panel.waitForTimeout(350);
   assert.equal(await target.evaluate(() => window.__browserCrewDangerClicks || 0), 1, "Cancel must leave the consequential action untouched.");
   assert.equal(await panel.evaluate(async (key) => (await chrome.storage.session.get(key))[key] || null, PENDING_APPROVAL_KEY), null);
-  pass("Cancel discarded the pending consequential action without executing it");
+  const resumesAfterCancel = providerServer.requests.filter((item) => /internal continuation after a user-approved browser action/i.test(item.systemText)).length;
+  assert.equal(resumesAfterCancel, resumesBeforeCancel, "Cancel must not trigger an automatic Chat continuation.");
+  pass("Cancel discarded the pending consequential action without executing or resuming it");
 
   await panel.locator("#chatNewButton").click();
   await panel.locator("#chatInput").fill("Revocation test: wait, then inspect the test page.");
@@ -220,12 +247,13 @@ async function startFixtureServer() {
         <p id="result">Waiting</p>
         <label>Password <input id="password" type="password" value="${SECRET_CANARY}" /></label>
         <button id="dangerButton" type="button">Delete account</button>
+        <p id="dangerResult">No deletion request.</p>
       </main>
       <script>
         window.__browserCrewApplyClicks = 0;
         window.__browserCrewDangerClicks = 0;
         document.querySelector('#applyButton').addEventListener('click',()=>{window.__browserCrewApplyClicks += 1;document.querySelector('#result').textContent=document.querySelector('#taskNote').value;});
-        document.querySelector('#dangerButton').addEventListener('click',()=>{window.__browserCrewDangerClicks += 1;});
+        document.querySelector('#dangerButton').addEventListener('click',()=>{window.__browserCrewDangerClicks += 1;document.querySelector('#dangerResult').textContent='Account deletion request accepted.';});
       </script>
     </body></html>`);
   });
@@ -241,10 +269,11 @@ async function startProviderServer(secondUrl) {
     }
     const body = JSON.parse(await readBody(request));
     const userText = String([...(body.messages || [])].reverse().find((message) => message.role === "user")?.content || "");
+    const systemText = String((body.messages || []).find((message) => message.role === "system")?.content || "");
     const toolMessages = (body.messages || []).filter((message) => message.role === "tool");
     const lastTool = toolMessages.at(-1);
     const toolText = String(lastTool?.content || "");
-    state.requests.push({ body, stream: body.stream === true, userText, toolText, toolCount: toolMessages.length });
+    state.requests.push({ body, stream: body.stream === true, userText, systemText, toolText, toolCount: toolMessages.length });
 
     if (!body.stream) {
       sendJson(response, body.model, "BrowserCrew connection works");
@@ -271,6 +300,18 @@ async function startProviderServer(secondUrl) {
 
     if (/Dangerous action test/i.test(userText)) {
       const count = toolMessages.length;
+      const resumed = /internal continuation after a user-approved browser action/i.test(systemText);
+      if (resumed) {
+        if (count === 0) return sendToolCall(response, body.model, { action: "observe", tabId: state.targetTabId });
+        if (count === 1) {
+          const observed = parseTool(lastTool);
+          if (!String(observed?.page?.text || "").includes("Account deletion request accepted.")) {
+            return sendSseContent(response, body.model, "Approved action verification failed because the changed page state was not visible.");
+          }
+          return sendSseContent(response, body.model, "Approved action verified. The account deletion request was accepted, and I did not repeat the approved click.");
+        }
+        return sendSseContent(response, body.model, "Approved action resume exceeded the expected verification steps.");
+      }
       if (count === 0) return sendToolCall(response, body.model, { action: "observe", tabId: state.targetTabId });
       if (count === 1) {
         const observed = parseTool(lastTool);
