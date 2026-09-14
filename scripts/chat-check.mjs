@@ -65,13 +65,14 @@ const shell = await readFile("src/chat-shell-ui.js", "utf8");
 for (const contract of [
   'document.querySelector("#tab-chat")?.click()',
   'backdrop.id = "aiSetupBackdrop"',
+  'document.body.append(backdrop)',
+  'view.setAttribute("aria-modal", "true")',
   'document.querySelector("#aiStatus")',
   'openAiSetupModal',
   'moveAiHelpBehindDisclosure',
   'chat-surface-active',
   'active?.status === "connected"',
-  'trapModalFocus',
-  'setBackgroundInert(true, backdrop)'
+  'accessibility-ui.js'
 ]) {
   if (!shell.includes(contract)) throw new Error(`Chat-first shell contract missing: ${contract}`);
 }
@@ -93,6 +94,9 @@ for (const contract of [
 ]) {
   if (!shellCss.includes(contract)) throw new Error(`Chat-first shell CSS contract missing: ${contract}`);
 }
+
+const accessibilityUi = await readFile("src/accessibility-ui.js", "utf8");
+if (!accessibilityUi.includes('"summary"')) throw new Error("Modal focus trapping must include progressive disclosure summaries.");
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
 if (pkg.scripts?.["chat-smoke"] !== "node scripts/chat-smoke.mjs") throw new Error("Chat smoke must stay wired in package.json.");
