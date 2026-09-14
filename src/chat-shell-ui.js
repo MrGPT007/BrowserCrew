@@ -1,7 +1,6 @@
 const SHELL_STYLESHEET = "src/styles/chat-shell.css";
 const CONNECTIONS_KEY = "browsercrew.connections.v1";
 const ACTIVE_CONNECTION_KEY = "browsercrew.activeConnection.v1";
-let aiSetupPreviousFocus = null;
 
 installShellStyles();
 document.addEventListener("DOMContentLoaded", initChatFirstShell);
@@ -69,8 +68,9 @@ function setupAiModal() {
   backdrop.hidden = true;
   backdrop.setAttribute("aria-hidden", "true");
 
-  const parent = view.parentNode;
-  parent.insertBefore(backdrop, view);
+  // BrowserCrew's accessibility layer makes #app inert while a modal is open,
+  // so modal surfaces live beside #app, like the command and transfer dialogs.
+  document.body.append(backdrop);
   backdrop.append(view);
   view.classList.add("shell-modal");
   view.setAttribute("role", "dialog");
@@ -92,7 +92,7 @@ function setupAiModal() {
     close.title = "Close";
     close.textContent = "×";
     heading.append(close);
-    close.addEventListener("click", () => closeAiSetupModal());
+    close.addEventListener("click", closeAiSetupModal);
   }
 
   moveAiHelpBehindDisclosure(view);
@@ -104,25 +104,17 @@ function setupAiModal() {
     openAiSetupModal();
   }, true);
 
-  nav.addEventListener("click", (event) => {
-    const tab = event.target.closest?.(".function-tab");
-    if (!tab || tab.id === "tab-ai") return;
-    if (!backdrop.hidden) closeAiSetupModal({ restoreFocus: false });
-  }, true);
-
   backdrop.addEventListener("click", (event) => {
     if (event.target === backdrop) closeAiSetupModal();
   });
 
+  // The global accessibility layer owns focus trapping and background inertness.
+  // AI setup only adds its product-specific Escape close behavior.
   document.addEventListener("keydown", (event) => {
-    if (backdrop.hidden) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      closeAiSetupModal();
-      return;
-    }
-    if (event.key === "Tab") trapModalFocus(event, view);
+    if (backdrop.hidden || event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeAiSetupModal();
   }, true);
 
   const result = document.querySelector("#connectionResult");
@@ -208,18 +200,16 @@ function openAiSetupModal() {
   const backdrop = document.querySelector("#aiSetupBackdrop");
   const view = document.querySelector("#view-ai");
   if (!backdrop || !view || !backdrop.hidden) return;
-  aiSetupPreviousFocus = document.activeElement;
   backdrop.hidden = false;
   backdrop.setAttribute("aria-hidden", "false");
   view.hidden = false;
   view.classList.add("is-active");
-  setBackgroundInert(true, backdrop);
   document.body.classList.add("shell-modal-open");
   refreshConfiguredAiStatus();
   requestAnimationFrame(() => focusFirstVisible(view));
 }
 
-function closeAiSetupModal({ restoreFocus = true } = {}) {
+function closeAiSetupModal() {
   const backdrop = document.querySelector("#aiSetupBackdrop");
   const view = document.querySelector("#view-ai");
   if (!backdrop || !view || backdrop.hidden) return;
@@ -227,14 +217,10 @@ function closeAiSetupModal({ restoreFocus = true } = {}) {
   backdrop.setAttribute("aria-hidden", "true");
   view.hidden = true;
   view.classList.remove("is-active");
-  setBackgroundInert(false, backdrop);
   document.body.classList.remove("shell-modal-open");
   refreshConfiguredAiStatus();
-  if (restoreFocus) {
-    const target = aiSetupPreviousFocus?.isConnected ? aiSetupPreviousFocus : document.querySelector("#aiStatus");
-    target?.focus();
-  }
-  aiSetupPreviousFocus = null;
+  // Focus restoration is intentionally delegated to accessibility-ui.js,
+  // which already handles every BrowserCrew aria-modal surface consistently.
 }
 
 async function refreshConfiguredAiStatus() {
@@ -296,38 +282,7 @@ function setAiStatusPresentation(stateName, text, model = "") {
 }
 
 function focusFirstVisible(root) {
-  const nodes = focusableNodes(root);
-  (nodes[0] || root)?.focus?.();
-}
-
-function trapModalFocus(event, root) {
-  const nodes = focusableNodes(root);
-  if (!nodes.length) {
-    event.preventDefault();
-    root.focus?.();
-    return;
-  }
-  const first = nodes[0];
-  const last = nodes.at(-1);
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
-}
-
-function focusableNodes(root) {
-  return [...root.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])')]
+  const nodes = [...root.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])')]
     .filter((node) => !node.hidden && !node.closest("[hidden]") && getComputedStyle(node).display !== "none" && getComputedStyle(node).visibility !== "hidden");
-}
-
-function setBackgroundInert(inert, backdrop) {
-  const app = document.querySelector("#app");
-  if (!app) return;
-  for (const child of app.children) {
-    if (child === backdrop) continue;
-    child.inert = inert;
-  }
+  (nodes[0] || root)?.focus?.();
 }
