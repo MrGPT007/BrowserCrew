@@ -33,6 +33,7 @@ try {
   await seedAccessibilityState(panel);
   await panel.reload();
   await panel.locator("#tab-chat").waitFor({ state: "visible", timeout: timeoutMs });
+  await panel.locator("#chatInput").waitFor({ state: "visible", timeout: timeoutMs });
   await waitUntil(async () => (await panel.locator("#chatConnectionPicker option").count()) >= 2, "Named AI picker did not load seeded connections.");
 
   assert.equal(await hasPageOverflow(panel), false, "Primary side-panel layout should not force page-level horizontal scrolling at 360px.");
@@ -67,6 +68,12 @@ try {
   pass("Primary tablist supported roving focus and arrow-key activation");
 
   await panel.locator("#tab-ai").click();
+  await panel.locator("#aiSetupBackdrop").waitFor({ state: "visible", timeout: timeoutMs });
+  assert.equal(await panel.locator("#view-ai").getAttribute("role"), "dialog");
+  assert.equal(await panel.locator("#view-ai").getAttribute("aria-modal"), "true");
+  assert.equal(await panel.locator("#tab-chat").evaluate((node) => node.inert || Boolean(node.closest("[inert]"))), true, "Primary navigation should be inert behind AI setup.");
+  assert.equal(await panel.locator(".ai-help-disclosure").getAttribute("open"), null, "Connection help should remain collapsed until requested.");
+
   const selectedProvider = panel.locator('.provider-card[aria-checked="true"]');
   await selectedProvider.focus();
   const beforeProvider = await panel.evaluate(() => document.activeElement?.dataset?.provider || "");
@@ -75,7 +82,21 @@ try {
   assert.notEqual(afterProvider, beforeProvider, "ArrowRight should move custom radio selection.");
   assert.equal(await panel.locator(`.provider-card[data-provider="${afterProvider}"]`).getAttribute("aria-checked"), "true");
   assert.equal(await panel.locator('.provider-card[tabindex="0"]').count(), 1, "Custom radio group should expose exactly one Tab stop.");
-  pass("Custom provider radios implemented standard roving/arrow-key behavior");
+
+  await panel.evaluate(() => {
+    const dialog = document.querySelector("#view-ai");
+    const focusable = [...dialog.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],summary,[tabindex]:not([tabindex="-1"])')]
+      .filter((node) => !node.hidden && !node.closest("[hidden]") && getComputedStyle(node).display !== "none" && getComputedStyle(node).visibility !== "hidden");
+    focusable.at(-1)?.focus();
+  });
+  await panel.keyboard.press("Tab");
+  assert.equal(await panel.evaluate(() => document.activeElement?.id), "aiSetupCloseButton", "Tab from the final AI setup control should wrap to the first control.");
+  await panel.keyboard.press("Escape");
+  await panel.locator("#aiSetupBackdrop").waitFor({ state: "hidden", timeout: timeoutMs });
+  await panel.waitForTimeout(25);
+  assert.equal(await panel.evaluate(() => document.activeElement?.id), "tab-ai", "Closing AI setup should restore focus to its opener.");
+  assert.equal(await panel.locator("#chatInput").isVisible(), true, "Closing AI setup should reveal the unchanged Chat surface.");
+  pass("AI setup behaved as a progressive modal: provider keyboard controls, inert background, focus trap, Escape close, and focus restoration");
 
   await panel.locator("#tab-chat").click();
   const commandButton = panel.locator("#commandPaletteButton");
@@ -138,6 +159,7 @@ try {
     assert.equal(await node.getAttribute("aria-atomic"), "true", `${id} should announce the complete status message.`);
   }
   const statusCopy = await panel.locator("#aiStatus .status-label").innerText();
+  assert.match(statusCopy, /Connected/i, "Seeded tested connection should remain visibly connected after reload.");
   assert.ok(statusCopy.trim(), "AI status must include text in addition to its visual dot.");
   pass("Primary asynchronous states used text plus polite atomic status semantics");
 
@@ -148,7 +170,7 @@ try {
 
   await panel.evaluate(() => localStorage.setItem("browsercrew.theme", "dark"));
   await panel.reload();
-  await panel.locator("#tab-chat").waitFor({ state: "visible", timeout: timeoutMs });
+  await panel.locator("#chatInput").waitFor({ state: "visible", timeout: timeoutMs });
   assert.equal(await panel.locator("html").getAttribute("data-theme"), "dark");
   assert.equal(await hasPageOverflow(panel), false, "Dark mode should retain narrow-width reflow.");
   pass("Dark mode retained the same narrow-width accessibility baseline");
