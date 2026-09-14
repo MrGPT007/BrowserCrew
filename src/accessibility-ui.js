@@ -137,6 +137,7 @@ function modalFocusable(dialog) {
     "select:not([disabled])",
     "textarea:not([disabled])",
     "a[href]",
+    "summary",
     '[tabindex]:not([tabindex="-1"])'
   ].join(",");
   return [...dialog.querySelectorAll(selector)].filter((node) => {
