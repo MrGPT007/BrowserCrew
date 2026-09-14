@@ -33,7 +33,9 @@ for (const phrase of [
   'assert.deepEqual(dimensions, { width: 1280, height: 800 }',
   'kind: "browsercrew.store_media_evidence"',
   'event?.pull_request?.head?.sha || event?.after',
-  'Installed extension connected through the real Connect AI surface',
+  'Installed extension connected through the progressive Connect AI popup and returned to Chat',
+  '#saveConnectionButton',
+  '#aiSetupCloseButton',
   'real Workspace compare UI with three user-selected pages'
 ]) if (!smoke.includes(phrase)) throw new Error(`Store media smoke contract missing: ${phrase}`);
 
