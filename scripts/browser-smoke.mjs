@@ -126,6 +126,8 @@ async function configureLocalProvider(panel, providerOrigin) {
   await panel.locator("#testConnectionButton").click();
   await waitForText(panel.locator("#connectionResult"), "Connected");
   assert.match(await panel.locator("#aiStatus").innerText(), /Connected/i);
+  await panel.locator("#aiSetupCloseButton").click();
+  await panel.locator("#view-chat").waitFor({ state: "visible", timeout: timeoutMs });
 }
 
 async function runSupplierComparison(panel) {
