@@ -29,7 +29,9 @@ for (const contract of [
   "verification",
   "exactUrlMatched: true",
   "MAX_PAGE_CHARS = 12000",
-  "allowedCalls: 1",
+  "pageReadUsed = false",
+  "requested.name === TOOL_NAME && canUsePage",
+  "pageReadUsed = true",
   "input[type='password']"
 ]) {
   if (!runtime.includes(contract)) throw new Error(`C3 tool runtime contract is missing: ${contract}`);
