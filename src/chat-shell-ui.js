@@ -157,20 +157,51 @@ function compactChatSurface() {
   if (!view || !heading || !connection || !context || !transcript || !activity || !composer) return;
 
   view.classList.add("chat-primary-surface");
-  heading.classList.add("chat-compact-heading");
-  connection.classList.add("chat-compact-toolbar");
-  context.classList.add("chat-compact-context");
   transcript.classList.add("chat-primary-transcript");
   activity.classList.add("chat-progressive-activity");
   composer.classList.add("chat-primary-composer");
 
-  const headingIntro = heading.querySelector(".view-intro");
-  if (headingIntro) headingIntro.hidden = true;
+  const minimalToolbar = document.createElement("div");
+  minimalToolbar.className = "chat-minimal-toolbar";
+  minimalToolbar.setAttribute("aria-label", "Chat controls");
 
-  const contextHeading = context.querySelector(".card-heading");
-  if (contextHeading) contextHeading.hidden = true;
-  const destination = context.querySelector("#chatDestinationText");
-  if (destination) destination.classList.add("progressive-copy");
+  const conversationControl = document.createElement("div");
+  conversationControl.className = "chat-conversation-control";
+  const conversationLabel = connection.querySelector('label[for="chatConversationSelect"]');
+  const conversationSelect = connection.querySelector("#chatConversationSelect");
+  if (conversationLabel) conversationLabel.classList.add("sr-only");
+  if (conversationLabel) conversationControl.append(conversationLabel);
+  if (conversationSelect) conversationControl.append(conversationSelect);
+
+  const newChatButton = heading.querySelector("#chatNewButton");
+  const commandButton = connection.querySelector("#commandPaletteButton");
+  if (conversationControl.childElementCount) minimalToolbar.append(conversationControl);
+  if (newChatButton) minimalToolbar.append(newChatButton);
+  if (commandButton) minimalToolbar.append(commandButton);
+  transcript.before(minimalToolbar);
+
+  // Per-message page access belongs beside the composer, not in a permanent card.
+  const contextToggle = context.querySelector(".chat-context-toggle");
+  const contextSummary = context.querySelector("#chatContextSummary");
+  const composerInput = composer.querySelector("#chatInput");
+  if (contextToggle) {
+    contextToggle.classList.add("chat-context-chip");
+    const strong = contextToggle.querySelector("strong");
+    const small = contextToggle.querySelector("small");
+    if (strong) strong.textContent = "Use current page";
+    if (small) small.hidden = true;
+    composer.insertBefore(contextToggle, composerInput || composer.firstChild);
+  }
+  if (contextSummary) {
+    contextSummary.classList.add("chat-inline-context-summary");
+    if (contextToggle?.nextSibling) composer.insertBefore(contextSummary, contextToggle.nextSibling);
+    else composer.insertBefore(contextSummary, composerInput || composer.firstChild);
+  }
+
+  // The old card shells still own runtime bindings, but no longer consume visual space.
+  heading.hidden = true;
+  connection.hidden = true;
+  context.hidden = true;
 
   const composerLabel = composer.querySelector('label[for="chatInput"]');
   if (composerLabel) composerLabel.classList.add("sr-only");
