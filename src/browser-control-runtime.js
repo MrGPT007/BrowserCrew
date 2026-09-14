@@ -294,7 +294,6 @@ function controlError(code, message) {
 }
 
 function collectPageSnapshot(maxChars, maxElements) {
-  const SECRET_TYPES = new Set(["password"]);
   const candidates = [...document.querySelectorAll([
     "a[href]", "button", "input:not([type='hidden'])", "textarea", "select", "summary",
     "[role='button']", "[role='link']", "[role='textbox']", "[role='checkbox']", "[role='radio']", "[role='combobox']", "[contenteditable='true']"
@@ -312,20 +311,22 @@ function collectPageSnapshot(maxChars, maxElements) {
     const type = String(element.getAttribute("type") || "").toLowerCase();
     const tag = element.tagName.toLowerCase();
     const role = String(element.getAttribute("role") || "").toLowerCase();
+    const auto = String(element.getAttribute("autocomplete") || "").toLowerCase();
+    const identity = `${element.id || ""} ${element.getAttribute("name") || ""} ${element.getAttribute("aria-label") || ""}`.toLowerCase();
+    const isSecret = type === "password" || /one-time-code|cc-number|cc-csc|cc-cvc|new-password|current-password/.test(auto) || /password|passcode|otp|one.?time|cvv|cvc|card.?number/.test(identity);
     const label = String(
       element.getAttribute("aria-label") ||
       element.getAttribute("title") ||
       element.getAttribute("placeholder") ||
       element.innerText ||
       element.getAttribute("name") ||
-      element.getAttribute("value") ||
       tag
     ).replace(/\s+/g, " ").trim().slice(0, 240);
     elements.push({
       ref,
       tag,
       role,
-      type: SECRET_TYPES.has(type) ? "secret" : type,
+      type: isSecret ? "secret" : type,
       label,
       disabled: Boolean(element.disabled || element.getAttribute("aria-disabled") === "true"),
       checked: typeof element.checked === "boolean" ? element.checked : undefined,
@@ -345,7 +346,7 @@ function executeInPage(input) {
     return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || 1) !== 0 && rect.width >= 1 && rect.height >= 1;
   };
   const describe = (element) => String(
-    element?.getAttribute?.("aria-label") || element?.getAttribute?.("title") || element?.innerText || element?.getAttribute?.("value") || element?.getAttribute?.("name") || element?.tagName || "control"
+    element?.getAttribute?.("aria-label") || element?.getAttribute?.("title") || element?.getAttribute?.("placeholder") || element?.innerText || element?.getAttribute?.("name") || element?.tagName || "control"
   ).replace(/\s+/g, " ").trim().slice(0, 240);
   const dangerous = (element) => {
     const label = describe(element).toLowerCase();
