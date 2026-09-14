@@ -54,7 +54,9 @@ try {
   await panel.getByRole("tab", { name: "Connect AI" }).click();
   await panel.locator("#modelInput").waitFor({ state: "visible", timeout: timeoutMs });
   await configureLocalProvider(panel, provider.origin);
-  pass("Installed extension connected through the real Connect AI surface");
+  await panel.locator("#aiSetupCloseButton").click();
+  await panel.locator("#aiSetupBackdrop").waitFor({ state: "hidden", timeout: timeoutMs });
+  pass("Installed extension connected through the progressive Connect AI popup and returned to Chat");
 
   const pages = [];
   for (const slug of ["atlas", "beacon", "cedar"]) {
@@ -141,9 +143,10 @@ async function prepareTestExtension(target, origins) {
 
 async function configureLocalProvider(panel, providerOrigin) {
   await panel.getByRole("radio", { name: /LM Studio/ }).click();
+  await panel.locator("#connectionNameInput").fill("Store preview AI");
   await panel.locator("#modelInput").fill("browsercrew-store-preview");
   await panel.locator("#serverInput").fill(`${providerOrigin}/v1`);
-  await panel.locator("#testConnectionButton").click();
+  await panel.locator("#saveConnectionButton").click();
   await waitForText(panel.locator("#connectionResult"), "Connected");
   assert.match(await panel.locator("#aiStatus").innerText(), /Connected/i);
 }
