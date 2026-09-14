@@ -1,0 +1,68 @@
+#browserControlStatus {
+  cursor:pointer;
+  user-select:none;
+  transition:transform 90ms ease, box-shadow 90ms ease;
+}
+#browserControlStatus:hover { box-shadow:2px 2px 0 var(--nbs-shadow); }
+#browserControlStatus:active { transform:translate(2px,2px); box-shadow:none; }
+#browserControlStatus:focus-visible { outline:3px solid var(--nbs-primary); outline-offset:2px; }
+#browserControlStatus[data-state="ok"] { background:color-mix(in srgb,var(--nbs-success),var(--nbs-surface) 84%); }
+#browserControlStatus.is-working .status-dot { animation:browsercrew-control-pulse 1.1s ease-in-out infinite; }
+
+body.chat-surface-active .chat-first-shell .status-strip {
+  grid-template-columns:minmax(0,1fr) minmax(9.6rem,.72fr);
+}
+body.chat-surface-active #pageStatus { display:none; }
+
+.browser-control-approval-backdrop {
+  position:fixed;
+  inset:0;
+  z-index:1200;
+  display:grid;
+  place-items:center;
+  padding:1rem;
+  background:rgb(20 18 17 / 68%);
+}
+.browser-control-approval-backdrop[hidden] { display:none; }
+.browser-control-approval-card {
+  width:min(100%,32rem);
+  max-height:min(90vh,42rem);
+  overflow:auto;
+  padding:1.15rem;
+  border:2px solid var(--nbs-border);
+  border-radius:var(--nbs-radius-lg);
+  background:var(--nbs-surface);
+  box-shadow:6px 6px 0 var(--nbs-shadow);
+}
+.browser-control-approval-card h2 { margin:.2rem 0 .45rem; }
+.browser-control-approval-card > p:not(.eyebrow) { margin:.15rem 0 .9rem; }
+.browser-control-approval-target {
+  display:grid;
+  gap:.25rem;
+  margin:.85rem 0;
+  padding:.8rem;
+  border:2px solid var(--nbs-border);
+  border-radius:var(--nbs-radius-md);
+  background:var(--nbs-surface-soft,var(--nbs-surface));
+  overflow-wrap:anywhere;
+}
+.browser-control-approval-target span { font-size:.86rem; opacity:.75; }
+.browser-control-approval-card .button-row { margin-top:1rem; }
+.browser-control-approval-card .button-row .button { flex:1; }
+
+@keyframes browsercrew-control-pulse {
+  0%,100% { transform:scale(1); opacity:1; }
+  50% { transform:scale(.72); opacity:.55; }
+}
+
+@media (max-width:390px) {
+  body.chat-surface-active .chat-first-shell .status-strip { grid-template-columns:1fr; }
+  #browserControlStatus { min-height:2.2rem; }
+  .browser-control-approval-card { padding:1rem; }
+  .browser-control-approval-card .button-row { display:grid; grid-template-columns:1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #browserControlStatus { transition:none; }
+  #browserControlStatus.is-working .status-dot { animation:none; }
+}

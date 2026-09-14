@@ -24,6 +24,7 @@ const targets = [
   "connections-smoke.mjs",
   "attachments-smoke.mjs",
   "tools-smoke.mjs",
+  "browser-control-smoke.mjs",
   "anthropic-smoke.mjs",
   "accessibility-smoke.mjs",
   "mcp-smoke.mjs",

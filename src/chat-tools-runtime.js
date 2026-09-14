@@ -1,3 +1,11 @@
+import {
+  BROWSER_CONTROL_TOOL_ID,
+  BROWSER_CONTROL_TOOL_NAME,
+  browserControlToolDefinition,
+  executeBrowserControlAction,
+  getBrowserControlGrant
+} from "./browser-control-runtime.js";
+
 const PENDING_TOOL_GRANT_KEY = "browsercrew.chatPendingToolGrant.v1";
 const CHAT_STORAGE_KEY = "browsercrew.conversations.v1";
 const CHAT_PORT = "browsercrew-chat";
@@ -28,19 +36,92 @@ async function prepareToolEnabledRequest(input, init) {
   try { body = JSON.parse(init.body); } catch { return null; }
   if (body?.stream !== true || !Array.isArray(body.messages)) return null;
 
-  const session = await chrome.storage.session.get(PENDING_TOOL_GRANT_KEY);
-  const grant = session[PENDING_TOOL_GRANT_KEY];
-  if (!grant || !Array.isArray(grant.tools) || !grant.tools.includes(TOOL_ID)) return null;
+  const [session, controlGrant] = await Promise.all([
+    chrome.storage.session.get(PENDING_TOOL_GRANT_KEY),
+    getBrowserControlGrant().catch(() => null)
+  ]);
+  const pageGrant = session[PENDING_TOOL_GRANT_KEY];
+  const hasPageGrant = Boolean(pageGrant && Array.isArray(pageGrant.tools) && pageGrant.tools.includes(TOOL_ID));
+  if (!hasPageGrant && !controlGrant) return null;
 
-  const conversation = await matchingRunningConversation(grant.scope);
+  const scope = hasPageGrant ? pageGrant.scope : "new";
+  const conversation = await matchingRunningConversation(scope);
   if (!conversation) return null;
 
-  await chrome.storage.session.remove(PENDING_TOOL_GRANT_KEY);
-  return { input, init, body, grant, conversation };
+  if (hasPageGrant) await chrome.storage.session.remove(PENDING_TOOL_GRANT_KEY);
+  return { input, init, body, pageGrant: hasPageGrant ? pageGrant : null, controlGrant, conversation };
 }
 
-async function executeToolEnabledRequest({ input, init, body, grant, conversation }) {
-  const toolDefinition = {
+async function executeToolEnabledRequest({ input, init, body, pageGrant, controlGrant, conversation }) {
+  const pageDefinition = pageGrant ? pageReadToolDefinition() : null;
+  const controlDefinition = controlGrant ? browserControlToolDefinition() : null;
+  const tools = [pageDefinition, controlDefinition].filter(Boolean);
+  let messages = [...body.messages];
+  let pageReadUsed = false;
+  let browserSteps = 0;
+  const maxBrowserSteps = Number(controlGrant?.maxSteps || 0);
+  let model = null;
+
+  for (;;) {
+    if (init.signal?.aborted) return refusalResponse("Stopped. BrowserCrew will not start another tool or model step.", model);
+    const canUsePage = Boolean(pageDefinition && !pageReadUsed);
+    const canUseBrowser = Boolean(controlDefinition && browserSteps < maxBrowserSteps);
+    const availableTools = [canUsePage ? pageDefinition : null, canUseBrowser ? controlDefinition : null].filter(Boolean);
+    const requestBody = {
+      ...body,
+      messages,
+      tools,
+      tool_choice: availableTools.length ? "auto" : "none",
+      stream: true
+    };
+    const response = await providerFetch(input, { ...init, body: JSON.stringify(requestBody) });
+    if (!response.ok) return response;
+    const completion = await readCompletion(response);
+    model = completion.model || model;
+
+    if (!completion.toolCalls.length) return completionResponse(completion);
+    if (!availableTools.length) {
+      await addToolActivity(conversation.id, "warning", "The AI asked for another tool after the active tool budget was exhausted, so BrowserCrew stopped tool dispatch.", { tool: "tool-budget", browserSteps, pageReadUsed });
+      return refusalResponse("BrowserCrew reached the active tool limit for this message. Send another message to continue.", model);
+    }
+    if (completion.toolCalls.length !== 1) {
+      await addToolActivity(conversation.id, "warning", "The AI asked for multiple browser actions at once. BrowserCrew requires one verified action at a time.", { tool: "tool-dispatch", requestedCalls: completion.toolCalls.length });
+      return refusalResponse("BrowserCrew requires one browser action at a time so every step can be checked before the next one.", model);
+    }
+
+    const requested = completion.toolCalls[0];
+    const assistantToolCall = assistantToolCallMessage(completion, requested);
+
+    if (requested.name === TOOL_NAME && canUsePage) {
+      const outcome = await runPageReadTool({ requested, pageGrant, conversation, signal: init.signal });
+      if (outcome.directResponse) return outcome.directResponse;
+      pageReadUsed = true;
+      messages = [...messages, assistantToolCall, toolMessage(requested.id, outcome.result)];
+      continue;
+    }
+
+    if (requested.name === BROWSER_CONTROL_TOOL_NAME && canUseBrowser) {
+      const outcome = await runBrowserControlTool({ requested, initialGrant: controlGrant, conversation, signal: init.signal, step: browserSteps + 1 });
+      browserSteps += 1;
+      messages = [...messages, assistantToolCall, toolMessage(requested.id, outcome.result)];
+      if (outcome.halt) {
+        const finalBody = { ...body, messages, tools, tool_choice: "none", stream: true };
+        const finalResponse = await providerFetch(input, { ...init, body: JSON.stringify(finalBody) });
+        if (!finalResponse.ok) return finalResponse;
+        const final = await readCompletion(finalResponse);
+        if (final.toolCalls.length) return refusalResponse("BrowserCrew paused browser control and is waiting for you.", final.model || model);
+        return completionResponse(final);
+      }
+      continue;
+    }
+
+    await addToolActivity(conversation.id, "warning", "BrowserCrew refused a tool request outside the active grant.", { tool: safeToolName(requested.name), toolCallId: requested.id });
+    return refusalResponse("BrowserCrew refused a tool request that was outside the active permission or had already used its budget.", model);
+  }
+}
+
+function pageReadToolDefinition() {
+  return {
     type: "function",
     function: {
       name: TOOL_NAME,
@@ -48,51 +129,41 @@ async function executeToolEnabledRequest({ input, init, body, grant, conversatio
       parameters: { type: "object", properties: {}, additionalProperties: false }
     }
   };
+}
 
-  const firstBody = { ...body, tools: [toolDefinition], tool_choice: "auto" };
-  const firstResponse = await providerFetch(input, { ...init, body: JSON.stringify(firstBody) });
-  if (!firstResponse.ok) return firstResponse;
-  const first = await readCompletion(firstResponse);
-
-  if (!first.toolCalls.length) return completionResponse(first);
-  if (first.toolCalls.length !== 1) {
-    await addToolActivity(conversation.id, "warning", "The AI asked for more tool calls than this message allows, so BrowserCrew did not run them.", { tool: TOOL_ID, allowedCalls: 1, requestedCalls: first.toolCalls.length });
-    return refusalResponse("BrowserCrew stopped the tool step because this message allows only one page read. Send another message if you want to read again.", first.model);
-  }
-
-  const requested = first.toolCalls[0];
+async function runPageReadTool({ requested, pageGrant, conversation, signal }) {
   await addToolActivity(conversation.id, "tool.requested", "The AI asked to read the page you approved for this message.", {
     tool: TOOL_ID,
-    host: safeHost(grant?.tab?.url),
+    host: safeHost(pageGrant?.tab?.url),
     toolCallId: requested.id
   });
 
-  if (init.signal?.aborted) return refusalResponse("The response was stopped before BrowserCrew started the tool.", first.model);
-  if (requested.name !== TOOL_NAME || !emptyArguments(requested.arguments)) {
+  if (signal?.aborted) return { directResponse: refusalResponse("The response was stopped before BrowserCrew started the tool.", null) };
+  if (!emptyArguments(requested.arguments)) {
     await addToolActivity(conversation.id, "warning", "BrowserCrew refused a tool request that did not match the approved page-read contract.", { tool: TOOL_ID, toolCallId: requested.id });
-    return refusalResponse("BrowserCrew refused the tool request because it did not match the page-read permission you approved.", first.model);
+    return { directResponse: refusalResponse("BrowserCrew refused the tool request because it did not match the page-read permission you approved.", null) };
   }
 
-  const validation = await validateGrant(grant);
+  const validation = await validateGrant(pageGrant);
   if (!validation.ok) {
-    await addToolActivity(conversation.id, "warning", validation.message, { tool: TOOL_ID, host: safeHost(grant?.tab?.url), grantId: grant.id });
-    return refusalResponse(validation.userMessage, first.model);
+    await addToolActivity(conversation.id, "warning", validation.message, { tool: TOOL_ID, host: safeHost(pageGrant?.tab?.url), grantId: pageGrant?.id });
+    return { directResponse: refusalResponse(validation.userMessage, null) };
   }
 
   await addToolActivity(conversation.id, "tool.authorized", "Allowed for this message only: read visible text from this exact page.", {
     tool: TOOL_ID,
-    host: safeHost(grant.tab.url),
-    grantId: grant.id,
+    host: safeHost(pageGrant.tab.url),
+    grantId: pageGrant.id,
     access: "read_only"
   });
-  if (init.signal?.aborted) return refusalResponse("The response was stopped before BrowserCrew started the tool.", first.model);
+  if (signal?.aborted) return { directResponse: refusalResponse("The response was stopped before BrowserCrew started the tool.", null) };
 
   await addToolActivity(conversation.id, "tool.started", "Reading bounded visible text from the approved page.", {
     tool: TOOL_ID,
-    host: safeHost(grant.tab.url),
-    grantId: grant.id
+    host: safeHost(pageGrant.tab.url),
+    grantId: pageGrant.id
   });
-  const observation = await observeGrantedPage(grant.tab);
+  const observation = await observeGrantedPage(pageGrant.tab);
   await addToolActivity(conversation.id, "tool.completed", "Page read finished and the bounded result is ready for the AI.", {
     tool: TOOL_ID,
     host: safeHost(observation.url),
@@ -103,47 +174,97 @@ async function executeToolEnabledRequest({ input, init, body, grant, conversatio
   await addToolActivity(conversation.id, "verification", "Checked that the tool stayed inside the exact approved tab and page address.", {
     tool: TOOL_ID,
     host: safeHost(observation.url),
-    grantId: grant.id,
+    grantId: pageGrant.id,
     exactUrlMatched: true
   });
-
-  if (init.signal?.aborted) return refusalResponse("The response was stopped after the page read, before another model request started.", first.model);
-
-  const assistantToolCall = {
-    role: "assistant",
-    content: first.text || null,
-    tool_calls: [{
-      id: requested.id,
-      type: "function",
-      function: { name: TOOL_NAME, arguments: requested.arguments || "{}" }
-    }]
-  };
-  const toolResult = {
-    role: "tool",
-    tool_call_id: requested.id,
-    content: JSON.stringify({
+  if (signal?.aborted) return { directResponse: refusalResponse("The response was stopped after the page read, before another model request started.", null) };
+  return {
+    result: {
       pageTitle: observation.title,
       pageAddress: observation.url,
       visibleText: observation.text,
       boundedCharacters: observation.text.length
-    })
+    }
   };
-  const secondBody = {
-    ...body,
-    messages: [...body.messages, assistantToolCall, toolResult],
-    tools: [toolDefinition],
-    tool_choice: "none",
-    stream: true
-  };
+}
 
-  const secondResponse = await providerFetch(input, { ...init, body: JSON.stringify(secondBody) });
-  if (!secondResponse.ok) return secondResponse;
-  const second = await readCompletion(secondResponse);
-  if (second.toolCalls.length) {
-    await addToolActivity(conversation.id, "warning", "The AI asked for another tool after the one-call budget was used, so BrowserCrew stopped tool dispatch.", { tool: TOOL_ID, allowedCalls: 1 });
-    return refusalResponse("BrowserCrew used the one page-read tool call allowed for this message. Send another message if another read is needed.", second.model || first.model);
+async function runBrowserControlTool({ requested, initialGrant, conversation, signal, step }) {
+  await addToolActivity(conversation.id, "control.requested", `Browser control requested step ${step}.`, {
+    tool: BROWSER_CONTROL_TOOL_ID,
+    toolCallId: requested.id,
+    step
+  });
+  if (signal?.aborted) return { result: { ok: false, code: "BROWSER_CONTROL_STOPPED", message: "Stopped before the browser action started." }, halt: true };
+
+  const currentGrant = await getBrowserControlGrant().catch(() => null);
+  if (!currentGrant || currentGrant.id !== initialGrant?.id) {
+    await addToolActivity(conversation.id, "control.blocked", "Browser control was turned off before the next action, so BrowserCrew did not dispatch it.", { tool: BROWSER_CONTROL_TOOL_ID, step });
+    return { result: { ok: false, code: "BROWSER_CONTROL_OFF", message: "Browser control is off. Turn it on again to continue." }, halt: true };
   }
-  return completionResponse(second);
+
+  let args;
+  try { args = JSON.parse(String(requested.arguments || "{}")); }
+  catch {
+    await addToolActivity(conversation.id, "control.blocked", "The AI supplied invalid browser-action arguments, so BrowserCrew did not dispatch them.", { tool: BROWSER_CONTROL_TOOL_ID, step });
+    return { result: { ok: false, code: "BROWSER_ACTION_ARGS_INVALID", message: "The browser action arguments were invalid." }, halt: false };
+  }
+
+  const action = safeActionName(args?.action);
+  await addToolActivity(conversation.id, "control.authorized", `Browser control is ON. Step ${step} may use ${action}.`, {
+    tool: BROWSER_CONTROL_TOOL_ID,
+    action,
+    grantId: currentGrant.id,
+    step,
+    access: "browser_control"
+  });
+  await addToolActivity(conversation.id, "control.started", `Running browser action: ${action}.`, {
+    tool: BROWSER_CONTROL_TOOL_ID,
+    action,
+    step
+  });
+
+  try {
+    const result = await executeBrowserControlAction(args, currentGrant, { signal });
+    const blocked = result?.ok === false;
+    const halt = blocked && ["CONFIRMATION_REQUIRED", "SECRET_FIELD_BLOCKED", "BROWSER_CONTROL_OFF", "BROWSER_CONTROL_STOPPED"].includes(String(result.code || ""));
+    await addToolActivity(
+      conversation.id,
+      blocked ? "control.blocked" : "control.completed",
+      blocked ? safeActivityMessage(result.message || `Browser action ${action} was blocked.`) : `Browser action finished: ${action}.`,
+      { tool: BROWSER_CONTROL_TOOL_ID, action, step, code: result?.code || null, tabId: result?.tab?.id || null }
+    );
+    if (!blocked) {
+      await addToolActivity(conversation.id, "control.verification", `Verified completion of browser action ${action} before allowing another step.`, {
+        tool: BROWSER_CONTROL_TOOL_ID,
+        action,
+        step,
+        tabId: result?.tab?.id || null
+      });
+    }
+    return { result, halt };
+  } catch (error) {
+    const code = String(error?.code || "BROWSER_ACTION_FAILED");
+    const message = safeActivityMessage(error?.message || "BrowserCrew could not complete that browser action.");
+    const halt = ["BROWSER_CONTROL_OFF", "BROWSER_CONTROL_STOPPED", "BROWSER_URL_BLOCKED"].includes(code);
+    await addToolActivity(conversation.id, "control.blocked", message, { tool: BROWSER_CONTROL_TOOL_ID, action, step, code });
+    return { result: { ok: false, code, message }, halt };
+  }
+}
+
+function assistantToolCallMessage(completion, requested) {
+  return {
+    role: "assistant",
+    content: completion.text || null,
+    tool_calls: [{
+      id: requested.id,
+      type: "function",
+      function: { name: requested.name, arguments: requested.arguments || "{}" }
+    }]
+  };
+}
+
+function toolMessage(toolCallId, result) {
+  return { role: "tool", tool_call_id: toolCallId, content: JSON.stringify(result ?? { ok: true }) };
 }
 
 async function validateGrant(grant) {
@@ -306,6 +427,18 @@ function sanitizeMeta(meta) {
 
 function safeHost(value) {
   try { return new URL(value).hostname; } catch { return "unknown site"; }
+}
+
+function safeToolName(value) {
+  return String(value || "unknown").replace(/[^a-z0-9_.-]/gi, "").slice(0, 120) || "unknown";
+}
+
+function safeActionName(value) {
+  return String(value || "unknown").replace(/[^a-z0-9_-]/gi, "").slice(0, 80) || "unknown";
+}
+
+function safeActivityMessage(value) {
+  return String(value || "Browser action did not finish.").replace(/\u0000/g, "").slice(0, 700);
 }
 
 function safePost(port, message) {

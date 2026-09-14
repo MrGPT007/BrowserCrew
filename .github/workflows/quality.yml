@@ -195,6 +195,14 @@ jobs:
         run: npm run attachments-smoke
       - name: Run C3 built-in Chat tool installed-extension smoke test
         run: npm run tools-smoke
+      - name: Run post-v0.2 browser control installed-extension smoke test
+        run: npm run browser-control-smoke
+      - name: Upload browser control evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-control-evidence
+          path: artifacts/browser-control-smoke
+          if-no-files-found: error
       - name: Run V02-B04 Anthropic protocol installed-extension smoke test
         run: npm run anthropic-smoke
       - name: Run V02-B05 accessibility installed-extension smoke test
