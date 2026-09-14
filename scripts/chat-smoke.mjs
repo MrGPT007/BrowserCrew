@@ -41,18 +41,37 @@ try {
 
   let panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-  await panel.getByRole("tab", { name: "Connect AI" }).click();
+  await panel.locator("#chatInput").waitFor({ state: "visible", timeout: timeoutMs });
+  assert.equal(await panel.locator("#view-workspace").isHidden(), true, "Workspace must not displace Chat on first open.");
+  assert.equal(await panel.locator("#tab-chat").getAttribute("aria-selected"), "true", "Chat must be the default primary surface.");
+  assert.equal(await panel.locator("#aiStatus").getAttribute("role"), "button", "AI status must be directly actionable.");
+  const shellOrder = await panel.evaluate(() => {
+    const nav = document.querySelector(".function-tabs");
+    const status = document.querySelector(".status-strip");
+    return Boolean(nav && status && nav.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  assert.equal(shellOrder, true, "AI status must appear below the main menu.");
+  pass("BrowserCrew opened directly into a full-height Chat surface with actionable AI status below the menu");
+
+  await panel.locator("#aiStatus").click();
+  await panel.locator("#aiSetupBackdrop").waitFor({ state: "visible", timeout: timeoutMs });
+  assert.equal(await panel.locator("#view-chat").isVisible(), true, "Opening AI setup must preserve Chat underneath the modal.");
+  assert.equal(await panel.locator("#view-ai").getAttribute("role"), "dialog");
+  assert.equal(await panel.locator(".ai-help-disclosure").getAttribute("open"), null, "Verbose AI setup help must start collapsed.");
   await panel.getByRole("radio", { name: /LM Studio/ }).click();
   await panel.locator("#modelInput").fill("browsercrew-chat-smoke");
   await panel.locator("#serverInput").fill(`${provider.origin}/v1`);
   await panel.locator("#testConnectionButton").click();
   await waitForText(panel.locator("#connectionResult"), "Connected");
-  pass("Existing Connect AI setup configured the model used by Chat");
+  await waitForText(panel.locator("#aiStatus .status-label"), "Connected");
+  assert.match(await panel.locator("#aiStatus .status-label").innerText(), /browsercrew-chat-smoke/i);
+  pass("AI setup opened progressively from the status chip and reflected a successful connection in the persistent status bar");
 
-  await panel.getByRole("tab", { name: "Chat" }).click();
-  await panel.locator("#chatInput").waitFor({ state: "visible", timeout: timeoutMs });
+  await panel.locator("#aiSetupCloseButton").click();
+  await panel.locator("#aiSetupBackdrop").waitFor({ state: "hidden", timeout: timeoutMs });
+  assert.equal(await panel.locator("#chatInput").isVisible(), true, "Closing AI setup must return directly to Chat.");
   assert.match(await panel.locator("#chatModelName").innerText(), /browsercrew-chat-smoke/i);
-  pass("Chat opened as a first-class side-panel view with the configured model visible");
+  pass("Closing AI setup preserved the Chat workspace and configured model");
 
   await panel.keyboard.press("Control+k");
   await panel.locator("#commandPalette").waitFor({ state: "visible", timeout: timeoutMs });
@@ -87,12 +106,13 @@ try {
   await panel.close();
   panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-  await panel.getByRole("tab", { name: "Chat" }).click();
+  await panel.locator("#chatInput").waitFor({ state: "visible", timeout: timeoutMs });
   await waitForText(panel.locator("#chatMessages"), "Visible Chat Lamp costs $88.");
+  await waitForText(panel.locator("#aiStatus .status-label"), "Connected");
   await panel.locator("#chatActivityToggle").click();
   await waitForText(panel.locator("#chatActivityList"), "Current-page context is ready");
   assert.match(await panel.locator("#chatActivityList").innerText(), /Saved|Response complete|Model finished/i);
-  pass("Conversation transcript and Live Activity survived side-panel close and reopen");
+  pass("Chat, connection status, transcript, and progressive Live Activity survived side-panel close and reopen");
 
   await panel.locator("#chatUseCurrentPage").uncheck();
   await panel.locator("#chatInput").fill("Please give a slow response.");
