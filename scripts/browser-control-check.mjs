@@ -103,7 +103,7 @@ for (const phrase of [
   'chrome.permissions.request({ origins: BROAD_ORIGINS })',
   'chrome.storage.session.set({ [BROWSER_CONTROL_GRANT_KEY]: grant })',
   'chrome.storage.session.remove([BROWSER_CONTROL_GRANT_KEY, BROWSER_CONTROL_PENDING_APPROVAL_KEY])',
-  'id="browserControlApproval"',
+  'approval.id = "browserControlApproval"',
   'Approve once',
   'CHECK BEFORE I DO THIS',
   'browserControlApprovalCancel")?.focus()',
