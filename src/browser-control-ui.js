@@ -64,6 +64,7 @@ function initBrowserControlUi() {
   });
   document.querySelector("#browserControlApprovalApprove")?.addEventListener("click", approvePendingAction);
   document.querySelector("#browserControlApprovalCancel")?.addEventListener("click", cancelPendingAction);
+  document.addEventListener("keydown", onApprovalKeydown, true);
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "session" && changes[BROWSER_CONTROL_GRANT_KEY]) renderBrowserControlStatus();
     if (area === "session" && changes[BROWSER_CONTROL_PENDING_APPROVAL_KEY]) renderPendingApproval();
@@ -71,6 +72,14 @@ function initBrowserControlUi() {
   });
   renderBrowserControlStatus();
   renderPendingApproval();
+}
+
+function onApprovalKeydown(event) {
+  const dialog = document.querySelector("#browserControlApproval");
+  if (!dialog || dialog.hidden || event.key !== "Escape") return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  document.querySelector("#browserControlApprovalCancel")?.click();
 }
 
 async function toggleBrowserControl() {
