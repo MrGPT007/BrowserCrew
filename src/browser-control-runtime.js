@@ -1,4 +1,5 @@
 export const BROWSER_CONTROL_GRANT_KEY = "browsercrew.browserControlGrant.v1";
+export const BROWSER_CONTROL_PENDING_APPROVAL_KEY = "browsercrew.browserControlPendingApproval.v1";
 export const BROWSER_CONTROL_TOOL_ID = "browser.control";
 export const BROWSER_CONTROL_TOOL_NAME = "browsercrew_browser_control";
 export const BROWSER_CONTROL_MAX_STEPS = 24;
@@ -27,6 +28,16 @@ const MAX_OBSERVATION_CHARS = 9000;
 const MAX_INTERACTIVE_ELEMENTS = 160;
 const MAX_TYPE_CHARS = 12000;
 const MAX_WAIT_MS = 6000;
+const APPROVAL_TTL_MS = 5 * 60 * 1000;
+let approvalMutation = Promise.resolve();
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!message || !["APPROVE_BROWSER_CONTROL_ACTION", "CANCEL_BROWSER_CONTROL_ACTION"].includes(message.type)) return undefined;
+  handleApprovalMessage(message)
+    .then((result) => sendResponse(result))
+    .catch((error) => sendResponse({ ok: false, code: String(error?.code || "BROWSER_APPROVAL_FAILED"), message: error?.message || "BrowserCrew could not finish that approval." }));
+  return true;
+});
 
 export function browserControlToolDefinition() {
   return {
@@ -91,11 +102,11 @@ export async function executeBrowserControlAction(rawArgs, grant, { signal } = {
     case "back": return historyAction(args, "back", signal);
     case "forward": return historyAction(args, "forward", signal);
     case "reload": return reloadAction(args, signal);
-    case "click": return pageAction(args, "click", signal);
-    case "type": return pageAction(args, "type", signal);
-    case "select": return pageAction(args, "select", signal);
-    case "scroll": return pageAction(args, "scroll", signal);
-    case "press_key": return pageAction(args, "press_key", signal);
+    case "click": return pageAction(args, "click", signal, grant);
+    case "type": return pageAction(args, "type", signal, grant);
+    case "select": return pageAction(args, "select", signal, grant);
+    case "scroll": return pageAction(args, "scroll", signal, grant);
+    case "press_key": return pageAction(args, "press_key", signal, grant);
     case "download_url": return downloadUrlAction(args);
     default: throw controlError("BROWSER_ACTION_UNKNOWN", "BrowserCrew did not recognize that browser action.");
   }
@@ -184,7 +195,7 @@ async function reloadAction(args, signal) {
   return { ok: true, action: "reload", tab: publicTab(settled || tab) };
 }
 
-async function pageAction(args, action, signal) {
+async function pageAction(args, action, signal, grant) {
   const tab = await resolveNormalTab(args.tabId);
   assertNotStopped(signal);
   const [{ result }] = await chrome.scripting.executeScript({
@@ -195,7 +206,18 @@ async function pageAction(args, action, signal) {
   if (!result || result.ok !== true) {
     const code = result?.code || "BROWSER_PAGE_ACTION_FAILED";
     const message = result?.message || "BrowserCrew could not complete that page action.";
-    if (code === "CONFIRMATION_REQUIRED") return { ok: false, action, code, message, confirmation: result.confirmation || null, tab: publicTab(tab) };
+    if (code === "CONFIRMATION_REQUIRED") {
+      const currentTab = await chrome.tabs.get(tab.id).catch(() => tab);
+      const pending = await createPendingApproval(currentTab, result.confirmation, grant);
+      return {
+        ok: false,
+        action,
+        code,
+        message,
+        confirmation: { ...result.confirmation, approvalId: pending.id, expiresAt: pending.expiresAt },
+        tab: publicTab(currentTab)
+      };
+    }
     throw controlError(code, message);
   }
   return { ...result, tab: publicTab(await chrome.tabs.get(tab.id).catch(() => tab)) };
@@ -226,6 +248,91 @@ async function snapshotTab(tabId) {
       elements: Array.isArray(result.elements) ? result.elements.slice(0, MAX_INTERACTIVE_ELEMENTS) : []
     }
   };
+}
+
+async function createPendingApproval(tab, confirmation, grant) {
+  const now = Date.now();
+  const approval = {
+    schemaVersion: 1,
+    id: crypto.randomUUID(),
+    grantId: String(grant?.id || ""),
+    action: "click",
+    tabId: Number(tab?.id || 0),
+    url: normalWebUrl(tab?.url) ? String(tab.url) : "",
+    ref: String(confirmation?.ref || "").slice(0, 120),
+    label: safeText(confirmation?.label || "control", 240),
+    tag: safeText(confirmation?.tag || "", 40),
+    type: safeText(confirmation?.type || "", 80),
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + APPROVAL_TTL_MS).toISOString()
+  };
+  if (!approval.grantId || !approval.tabId || !approval.url || !approval.ref || !approval.label) {
+    throw controlError("BROWSER_APPROVAL_INVALID", "BrowserCrew could not create a safe approval for that action.");
+  }
+  await chrome.storage.session.set({ [BROWSER_CONTROL_PENDING_APPROVAL_KEY]: approval });
+  return approval;
+}
+
+async function handleApprovalMessage(message) {
+  const approvalId = String(message?.approvalId || "");
+  if (!approvalId) return { ok: false, code: "BROWSER_APPROVAL_ID_REQUIRED", message: "That browser approval is missing its one-time id." };
+
+  if (message.type === "CANCEL_BROWSER_CONTROL_ACTION") {
+    return withApprovalMutation(async () => {
+      const stored = await chrome.storage.session.get(BROWSER_CONTROL_PENDING_APPROVAL_KEY);
+      const pending = stored[BROWSER_CONTROL_PENDING_APPROVAL_KEY];
+      if (!pending || pending.id !== approvalId) return { ok: false, code: "BROWSER_APPROVAL_NOT_FOUND", message: "That browser approval is no longer pending." };
+      await chrome.storage.session.remove(BROWSER_CONTROL_PENDING_APPROVAL_KEY);
+      return { ok: true, cancelled: true, approvalId };
+    });
+  }
+
+  const pending = await withApprovalMutation(async () => {
+    const stored = await chrome.storage.session.get(BROWSER_CONTROL_PENDING_APPROVAL_KEY);
+    const approval = stored[BROWSER_CONTROL_PENDING_APPROVAL_KEY];
+    if (!approval || approval.id !== approvalId) return null;
+    await chrome.storage.session.remove(BROWSER_CONTROL_PENDING_APPROVAL_KEY);
+    return approval;
+  });
+  if (!pending) return { ok: false, code: "BROWSER_APPROVAL_NOT_FOUND", message: "That browser approval is no longer pending." };
+  if (Date.parse(pending.expiresAt || "") <= Date.now()) return { ok: false, code: "BROWSER_APPROVAL_EXPIRED", message: "That browser approval expired. Ask BrowserCrew to inspect the page again." };
+
+  const grant = await getBrowserControlGrant().catch(() => null);
+  if (!grant || grant.id !== pending.grantId) return { ok: false, code: "BROWSER_CONTROL_OFF", message: "Browser control changed or is off, so BrowserCrew did not use the approval." };
+
+  try {
+    return await executeApprovedClick(pending, grant);
+  } catch (error) {
+    return { ok: false, code: String(error?.code || "BROWSER_APPROVAL_FAILED"), message: error?.message || "BrowserCrew could not complete that approved action." };
+  }
+}
+
+function withApprovalMutation(task) {
+  const run = approvalMutation.then(task, task);
+  approvalMutation = run.catch(() => undefined);
+  return run;
+}
+
+async function executeApprovedClick(approval, grant) {
+  assertActiveGrant(grant);
+  if (approval.action !== "click" || approval.grantId !== grant.id) throw controlError("BROWSER_APPROVAL_MISMATCH", "That approval does not match the active browser-control session.");
+  const tab = await chrome.tabs.get(approval.tabId).catch(() => null);
+  if (!tab?.id || tab.url !== approval.url || !normalWebUrl(tab.url)) throw controlError("BROWSER_APPROVAL_PAGE_CHANGED", "The approved page changed, so BrowserCrew did not click anything.");
+
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: executeInPage,
+    args: [{
+      action: "click",
+      ref: approval.ref,
+      approvedConsequential: true,
+      expectedLabel: approval.label,
+      expectedTag: approval.tag,
+      expectedType: approval.type
+    }]
+  });
+  if (!result || result.ok !== true) throw controlError(result?.code || "BROWSER_APPROVAL_FAILED", result?.message || "BrowserCrew could not complete that approved action.");
+  return { ...result, approvedOnce: true, approvalId: approval.id, tab: publicTab(await chrome.tabs.get(tab.id).catch(() => tab)) };
 }
 
 async function resolveNormalTab(tabId = null) {
@@ -386,10 +493,24 @@ function executeInPage(input) {
   element.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
 
   if (input.action === "click") {
-    if (dangerous(element)) return { ok: false, code: "CONFIRMATION_REQUIRED", message: `BrowserCrew paused before the consequential action “${describe(element)}”.`, confirmation: { ref: input.ref, label: describe(element) } };
+    const label = describe(element);
+    const tag = String(element.tagName || "").toLowerCase();
+    const type = String(element.getAttribute?.("type") || "").toLowerCase();
+    if (input.approvedConsequential) {
+      if (label !== String(input.expectedLabel || "") || tag !== String(input.expectedTag || "") || type !== String(input.expectedType || "")) {
+        return { ok: false, code: "BROWSER_APPROVAL_TARGET_CHANGED", message: "The approved control changed before BrowserCrew could click it. Inspect the page again before approving." };
+      }
+    } else if (dangerous(element)) {
+      return {
+        ok: false,
+        code: "CONFIRMATION_REQUIRED",
+        message: `BrowserCrew paused before the consequential action “${label}”.`,
+        confirmation: { ref: input.ref, label, tag, type }
+      };
+    }
     element.focus?.({ preventScroll: true });
     element.click();
-    return { ...base, ref: input.ref, target: describe(element) };
+    return { ...base, ref: input.ref, target: label };
   }
 
   if (input.action === "type") {
