@@ -41,6 +41,8 @@ for (const phrase of [
   'chrome.storage.session.get(BROWSER_CONTROL_GRANT_KEY)',
   'chrome.permissions.contains({ origins: BROAD_ORIGINS })',
   'data-browsercrew-agent-ref',
+  'const isSecret =',
+  'type: isSecret ? "secret" : type',
   'SECRET_FIELD_BLOCKED',
   'CONFIRMATION_REQUIRED',
   'BROWSER_REF_STALE',
@@ -49,6 +51,17 @@ for (const phrase of [
 ]) if (!runtime.includes(phrase)) throw new Error(`Browser control runtime contract missing: ${phrase}`);
 if (/eval\s*\(|new Function\s*\(/.test(runtime)) throw new Error("Browser control must not execute model-supplied JavaScript.");
 if (/executeScript\([^)]*func\s*:\s*args\./s.test(runtime)) throw new Error("Browser control must dispatch only built-in injected functions, never model-supplied functions.");
+
+const snapshotStart = runtime.indexOf("function collectPageSnapshot");
+const pageActionStart = runtime.indexOf("function executeInPage");
+if (snapshotStart < 0 || pageActionStart <= snapshotStart) throw new Error("Browser control snapshot/action functions could not be inspected.");
+const snapshotSource = runtime.slice(snapshotStart, pageActionStart);
+if (snapshotSource.includes('element.getAttribute("value")')) throw new Error("Browser observations must never use form-control values as model-visible labels.");
+const actionSource = runtime.slice(pageActionStart);
+const describeEnd = actionSource.indexOf("const dangerous =");
+if (describeEnd < 0) throw new Error("Browser action description boundary could not be inspected.");
+const describeSource = actionSource.slice(0, describeEnd);
+if (describeSource.includes('getAttribute?.("value")')) throw new Error("Browser action/activity labels must not expose current form-control values.");
 
 const tools = await readFile("src/chat-tools-runtime.js", "utf8");
 for (const phrase of [
